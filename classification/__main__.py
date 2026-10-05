@@ -27,7 +27,7 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--input", type=Path, default=ROOT / "codebook/codebook.xlsx")
     p.add_argument("--sheet", default="Codebook phụ tùng")
-    p.add_argument("--env-file", type=Path, default=ROOT / "ocr/.env")
+    p.add_argument("--env-file", type=Path, default=ROOT / ".env")
     p.add_argument("--model")
     p.add_argument("--batch-size", type=int, default=100)
     p.add_argument("--timeout", type=float, default=180)

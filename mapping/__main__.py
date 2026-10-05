@@ -7,7 +7,7 @@ from pathlib import Path
 from google import genai
 from google.genai import types
 
-from ocr.extractor import ROOT, load_env, write_json
+from ocr.extractor import PROJECT_ROOT, load_env, write_json
 from ocr.schema import Quotation
 from .mapper import CODEBOOK_DIR, CodebookMapper, GeminiMatcher
 
@@ -17,7 +17,7 @@ def main():
     parser.add_argument("result", type=Path)
     parser.add_argument("--output", type=Path, default=Path("outputs/mapping.json"))
     parser.add_argument("--codebook-dir", type=Path, default=CODEBOOK_DIR)
-    parser.add_argument("--env-file", type=Path, default=ROOT / ".env")
+    parser.add_argument("--env-file", type=Path, default=PROJECT_ROOT / ".env")
     parser.add_argument("--model")
     parser.add_argument("--timeout", type=float, default=180)
     parser.add_argument("--exact-only", action="store_true", help="Test exact match offline, không gọi Gemini")

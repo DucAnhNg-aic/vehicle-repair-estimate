@@ -65,7 +65,7 @@ python -u -m classification --run-dir classification/outputs/full_binary100 2>&1
 # Ctrl+B rồi D để tách; tmux attach -t codebook-classification để quay lại.
 ```
 
-Mặc định đọc `ocr/.env` (`GEMINI_API_KEY`, `GEMINI_MODEL`); biến môi trường
+Mặc định đọc `.env` (`GEMINI_API_KEY`, `GEMINI_MODEL`); biến môi trường
 đã đặt có ưu tiên hơn file. `--model` ưu tiên hơn `GEMINI_MODEL`.
 Các tùy chọn khác: `--input FILE.xlsx`, `--sheet NAME`, `--batch-size 100`,
 `--timeout 180`, `--env-file FILE`. `--max-batches` đếm batch mới, không đếm

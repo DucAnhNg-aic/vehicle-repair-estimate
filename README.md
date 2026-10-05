@@ -9,7 +9,7 @@ python -m pip install -r requirements.txt
 python -m ocr
 ```
 
-Script đọc `GEMINI_API_KEY`, `GEMINI_MODEL` từ `ocr/.env` và sử dụng
+Script đọc `GEMINI_API_KEY`, `GEMINI_MODEL` từ `.env` và sử dụng
 biến chuỗi `PROMPT` trong `prompt.py`. Biến môi trường đã export được ưu tiên hơn `.env`;
 `--model` được ưu tiên cao nhất. `.env` hỗ trợ các dòng đơn giản `KEY=value`
 hoặc `KEY="value"`. Mặc định chạy ảnh JPG duy nhất trong `img/`.
@@ -81,7 +81,7 @@ Tham khảo chính thức:
 ## OCR và mapping độc lập / tích hợp
 
 OCR trả `Quotation` đã validate; lỗi API/schema được raise cho luồng gọi xử lý.
-API không tự load `.env`; CLI vẫn load `ocr/.env`. Client truyền vào do caller quản lý.
+API không tự load `.env`; CLI vẫn load `.env`. Client truyền vào do caller quản lý.
 
 ```python
 from google import genai

@@ -12,7 +12,7 @@ from google import genai
 from google.genai import types
 
 from .extractor import (
-    IMG_DIR, INLINE_LIMIT, OUTPUT_DIR, ROOT, SUPPORTED,
+    IMG_DIR, INLINE_LIMIT, OUTPUT_DIR, PROJECT_ROOT, ROOT, SUPPORTED,
     extract_document, load_env, load_prompt,
 )
 
@@ -20,7 +20,7 @@ from .extractor import (
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("file", nargs="?", type=Path, help="Ảnh/PDF/Markdown; mặc định dùng ảnh mẫu trong BGSC.")
-    parser.add_argument("--env-file", type=Path, default=ROOT / ".env")
+    parser.add_argument("--env-file", type=Path, default=PROJECT_ROOT / ".env")
     parser.add_argument("--prompt", type=Path, default=ROOT / "prompt.py",
                         help="File .py khai báo PROMPT hoặc file text UTF-8; mặc định prompt.py.")
     parser.add_argument("--model", help="Ưu tiên hơn GEMINI_MODEL trong env/.env.")
