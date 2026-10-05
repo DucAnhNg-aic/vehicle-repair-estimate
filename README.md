@@ -6,10 +6,10 @@ Chạy với Python 3.11 trong conda `da_gemini`:
 conda activate da_gemini
 cd /home/ubuntu/ducanh/BGSC
 python -m pip install -r requirements.txt
-python src/read_document.py
+python ocr/read_document.py
 ```
 
-Script đọc `GEMINI_API_KEY`, `GEMINI_MODEL` từ `src/.env` và sử dụng
+Script đọc `GEMINI_API_KEY`, `GEMINI_MODEL` từ `ocr/.env` và sử dụng
 biến chuỗi `PROMPT` trong `prompt.py`. Biến môi trường đã export được ưu tiên hơn `.env`;
 `--model` được ưu tiên cao nhất. `.env` hỗ trợ các dòng đơn giản `KEY=value`
 hoặc `KEY="value"`. Mặc định chạy ảnh JPG duy nhất trong `img/`.
@@ -20,10 +20,10 @@ Sửa nội dung hướng dẫn trong chuỗi `PROMPT` của `prompt.py`.
 File `.py` được thực thi để lấy `PROMPT`, vì vậy chỉ dùng module do bạn kiểm soát.
 
 ```bash
-python src/read_document.py --dry-run
-python src/read_document.py --list-models
-python src/read_document.py '/path/to/bao gia.pdf' --model gemini-3.6-flash
-python src/read_document.py 'img/TAILIEUTHIETHAIXE64A33283-20260828-071310.md'
+python ocr/read_document.py --dry-run
+python ocr/read_document.py --list-models
+python ocr/read_document.py '/path/to/bao gia.pdf' --model gemini-3.6-flash
+python ocr/read_document.py 'img/TAILIEUTHIETHAIXE64A33283-20260828-071310.md'
 ```
 
 File `.md`/`.markdown` được gửi dưới dạng text UTF-8 (giữ nguyên bảng HTML
@@ -46,7 +46,7 @@ API hoặc kiểm tra JSON thất bại:
 - `elapsed_seconds`: tổng từ lúc bắt đầu xử lý đến khi lưu kết quả và xóa
   file upload tạm; không gồm khởi động Python, đọc cấu hình và ghi metadata.
 
-Lệnh chạy vẫn là `python src/read_document.py`, không cần thêm tham số.
+Lệnh chạy vẫn là `python ocr/read_document.py`, không cần thêm tham số.
 
 Chi phí ước tính được in trên terminal và lưu ở `metadata.json.cost`, gồm
 input không cache, cached input, output và thinking. Thinking tính theo giá
@@ -77,3 +77,47 @@ Tham khảo chính thức:
 [đọc tài liệu](https://ai.google.dev/gemini-api/docs/document-processing),
 [structured output](https://ai.google.dev/gemini-api/docs/structured-output),
 [generateContent](https://ai.google.dev/api/generate-content).
+
+## OCR và mapping độc lập / tích hợp
+
+OCR trả `Quotation` đã validate; lỗi API/schema được raise cho luồng gọi xử lý.
+API không tự load `.env`; CLI vẫn load `ocr/.env`. Client truyền vào do caller quản lý.
+
+```python
+from google import genai
+from ocr import extract_document
+from mapping import CodebookMapper, GeminiMatcher
+
+with genai.Client() as client:  # GEMINI_API_KEY từ environment
+    quotation = extract_document("img/bao_gia.jpg", model="your-model", client=client)
+    mapper = CodebookMapper(matcher=GeminiMatcher(client, "your-model"))
+    mappings = mapper.map_quotation(quotation)
+    # Hoặc mapper.map_item(quotation.items[0])
+    for item, mapped in zip(quotation.items, mappings):
+        print(item.raw_name, [row.code for row in mapped.matches])
+```
+
+Mapping dùng `raw_name` so sánh **nguyên văn** với `TEN` (phân biệt hoa/thường,
+không bỏ dấu/trim). `labor` và `paint` dùng service codebook; `material` dùng
+part codebook. Exact match trả tất cả dòng có cùng tên, không gọi Gemini.
+Nếu không exact, gửi item OCR và toàn bộ danh sách tên duy nhất của codebook
+được chọn cho Gemini. Gemini chọn một tên hoặc null; chương trình tra lại tất cả
+mã `MA` của tên đó. Tên ngoài danh sách/API lỗi/schema lỗi được raise;
+null trả `unmatched` với `matches=[]`. Không tự chọn gần đúng khi Gemini lỗi.
+
+```bash
+# OCR độc lập
+python ocr/read_document.py '/path/to/bao_gia.pdf'
+# Mapping từ kết quả OCR, bật Gemini fallback mặc định
+python -m mapping '/path/to/result.json' --output outputs/mapped.json
+# Test exact offline, không cần key
+python -m mapping '/path/to/result.json' --exact-only --output outputs/exact.json
+# Unit tests offline (mock Gemini)
+python -m unittest discover -s tests -v
+```
+
+CLI mapping giữ các trường OCR và thêm `mapping` vào mỗi item, theo đúng thứ tự.
+`mapping.matches` chứa `code`, `name`, `sheet`, `row`; không loại các dòng trùng.
+File `.calls.json` bên cạnh output lưu response/usage và latency từng lời gọi
+Gemini, kể cả khi mapping thất bại. Chạy lại cùng `--output` sẽ ghi đè file đó.
+`CodebookMapper()` không truyền matcher chỉ chạy exact, phù hợp test offline.

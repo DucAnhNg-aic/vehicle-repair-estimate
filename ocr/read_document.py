@@ -11,17 +11,21 @@ import runpy
 import sys
 import time
 from collections import Counter
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from datetime import datetime, timezone
 from pathlib import Path
 
 from google import genai
 from google.genai import types
 
-from schema import Quotation
-from cost import estimate_cost
+if __package__:
+    from .schema import Quotation
+    from .cost import estimate_cost
+else:
+    from schema import Quotation
+    from cost import estimate_cost
 
-ROOT = Path(__file__).resolve().parent  # thư mục src (.env, prompt.py)
+ROOT = Path(__file__).resolve().parent  # thư mục ocr (.env, prompt.py)
 PROJECT_ROOT = ROOT.parent
 IMG_DIR = PROJECT_ROOT / "img"
 OUTPUT_DIR = PROJECT_ROOT / "outputs"
@@ -137,16 +141,48 @@ def main() -> int:
     if args.dry_run:
         return 0
 
+    extract_document(file_path, model=model, api_key=api_key, prompt_path=args.prompt,
+                     output_dir=args.output_dir, timeout=args.timeout)
+    return 0
+
+
+def extract_document(
+    file_path: str | Path, *, model: str, client=None, api_key: str | None = None,
+    prompt_path: str | Path = ROOT / "prompt.py",
+    output_dir: str | Path = OUTPUT_DIR, timeout: float = 180,
+) -> Quotation:
+    """Extract and validate OCR; accepts a shared client and preserves run artifacts.
+
+    Does not load .env or mutate process configuration. Caller owns injected clients.
+    API/validation errors propagate; failed responses remain in the run directory.
+    """
+    if timeout <= 0:
+        raise ValueError("timeout phải lớn hơn 0")
+    file_path, prompt_path, output_dir = Path(file_path).resolve(), Path(prompt_path), Path(output_dir)
+    if not file_path.is_file() or file_path.stat().st_size == 0:
+        raise ValueError(f"File không tồn tại hoặc rỗng: {file_path}")
+    mime = mimetypes.guess_type(file_path)[0]
+    is_markdown = file_path.suffix.lower() in {".md", ".markdown"}
+    markdown_text = file_path.read_text(encoding="utf-8").strip() if is_markdown else None
+    if is_markdown and not markdown_text:
+        raise ValueError("Markdown rỗng")
+    if not is_markdown and mime not in SUPPORTED:
+        raise ValueError("Định dạng tài liệu không hỗ trợ")
+    prompt = load_prompt(prompt_path)
+    use_inline = file_path.stat().st_size <= INLINE_LIMIT
+    input_mode = "markdown_text" if is_markdown else ("inline" if use_inline else "Files API")
     # A unique run directory preserves earlier results, including failed validation.
-    args.output_dir.mkdir(parents=True, exist_ok=True)
-    run_dir = args.output_dir / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S_%fZ")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    run_dir = output_dir / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S_%fZ")
     run_dir.mkdir()
     started = time.perf_counter()
     timings = {}
     succeeded = False
     uploaded = None
     cost = estimate_cost(model, None, datetime.now(timezone.utc).date())
-    with genai.Client(api_key=api_key, http_options=types.HttpOptions(timeout=int(args.timeout * 1000))) as client:
+    with (nullcontext(client) if client is not None else genai.Client(
+        api_key=api_key, http_options=types.HttpOptions(timeout=int(timeout * 1000)))
+    ) as client:
         try:
             with measure(timings, "prepare_media_seconds"):
                 media = {"type": "document" if mime == "application/pdf" else "image", "mime_type": mime}
@@ -156,7 +192,7 @@ def main() -> int:
                     media["data"] = base64.b64encode(file_path.read_bytes()).decode("ascii")
                 else:
                     uploaded = client.files.upload(file=str(file_path), config={"mime_type": mime})
-                    ready = wait_for_file(client, uploaded, args.timeout)
+                    ready = wait_for_file(client, uploaded, timeout)
                     media["uri"] = ready.uri
             with measure(timings, "gemini_request_seconds"):
                 interaction = client.interactions.create(
@@ -195,7 +231,7 @@ def main() -> int:
                 "model": model,
                 "input": str(file_path),
                 "input_mode": input_mode,
-                "prompt_file": str(args.prompt.resolve()),
+                "prompt_file": str(prompt_path.resolve()),
                 "endpoint": "/v1beta/interactions",
                 "status": "success" if succeeded else "failed",
                 "elapsed_seconds": elapsed,
@@ -211,7 +247,7 @@ def main() -> int:
             else:
                 print(f"Chi phí chưa xác định: {cost['reason']}", flush=True)
             print(f"Thư mục lần chạy: {run_dir}", flush=True)
-    return 0
+    return parsed
 
 
 if __name__ == "__main__":
