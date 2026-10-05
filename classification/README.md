@@ -49,7 +49,7 @@ Từ thư mục BGSC:
 
 ```bash
 conda activate da_gemini
-pip install -r classification/requirements.txt
+pip install -r requirements.txt
 python -m classification --dry-run
 
 # Thử 1 batch (100 dòng), lưu checkpoint để chạy tiếp.
