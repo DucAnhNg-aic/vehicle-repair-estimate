@@ -52,7 +52,7 @@ class QuotationItem(StrictModel):
     operation: Literal[
         "paint", "repair", "bodywork", "remove_install", "replace",
         "weld", "reshape", "polish", "clean", "other",
-    ] | None = Field(description="Loại thao tác chính.")
+    ] | None = Field(description="Loại thao tác chính. Đối với phụ tùng/vật tư (material), nếu tài liệu không nêu rõ hành động thao tác thì để null, không được tự suy đoán là replace.")
     vehicle_part: str | None = Field(
         description='Bộ phận xe được nhắc đến trong tên công việc, ví dụ: "cản trước", "cửa sau phải", '
                     '"đèn pha phải", "mặt ca lăng", "vè trước trái". '
