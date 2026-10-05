@@ -7,7 +7,7 @@ from pathlib import Path
 from google import genai
 from google.genai import types
 
-from ocr.read_document import ROOT, load_env, write_json
+from ocr.extractor import ROOT, load_env, write_json
 from ocr.schema import Quotation
 from .mapper import CODEBOOK_DIR, CodebookMapper, GeminiMatcher
 

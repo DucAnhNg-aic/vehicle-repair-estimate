@@ -49,23 +49,23 @@ Từ thư mục BGSC:
 
 ```bash
 conda activate da_gemini
-pip install -r Classification/requirements.txt
-python Classification/classify.py --dry-run
+pip install -r classification/requirements.txt
+python -m classification --dry-run
 
 # Thử 1 batch (100 dòng), lưu checkpoint để chạy tiếp.
-python Classification/classify.py --run-dir Classification/outputs/trial_binary100 --max-batches 1
+python -m classification --run-dir classification/outputs/trial_binary100 --max-batches 1
 
 # Chạy tiếp tất cả batch còn lại.
-python Classification/classify.py --run-dir Classification/outputs/trial_binary100 --resume
+python -m classification --run-dir classification/outputs/trial_binary100 --resume
 
 # Hoặc chạy toàn bộ trong tmux, lưu cả console log.
 tmux new -s codebook-classification
 set -o pipefail
-python -u Classification/classify.py --run-dir Classification/outputs/full_binary100 2>&1 | tee /tmp/codebook-classification.log
+python -u -m classification --run-dir classification/outputs/full_binary100 2>&1 | tee /tmp/codebook-classification.log
 # Ctrl+B rồi D để tách; tmux attach -t codebook-classification để quay lại.
 ```
 
-Mặc định đọc `src/.env` (`GEMINI_API_KEY`, `GEMINI_MODEL`); biến môi trường
+Mặc định đọc `ocr/.env` (`GEMINI_API_KEY`, `GEMINI_MODEL`); biến môi trường
 đã đặt có ưu tiên hơn file. `--model` ưu tiên hơn `GEMINI_MODEL`.
 Các tùy chọn khác: `--input FILE.xlsx`, `--sheet NAME`, `--batch-size 100`,
 `--timeout 180`, `--env-file FILE`. `--max-batches` đếm batch mới, không đếm
@@ -89,7 +89,7 @@ và phát sinh thêm chi phí.
 - `results.json`: log đầy đủ từng mã/tên, dòng Excel và item_type được ghép lại.
 - `summary.json`: số dòng Excel đã ghép, số tên unique đã phân loại, thống kê
   item_type theo tên unique, thời gian gọi
-  API cộng dồn và chi phí đã xác định. Chi phí dùng bảng giá trong `src/cost.py`;
+  API cộng dồn và chi phí đã xác định. Chi phí dùng bảng giá trong `ocr/cost.py`;
   đây là ước tính, cần đối chiếu bảng giá hiện hành khi vận hành.
 - `classified.xlsx`: chỉ xuất tên này khi tất cả dòng hoàn tất.
 - `classified.partial.xlsx`: snapshot khi giới hạn batch hoặc gặp lỗi;
@@ -108,7 +108,7 @@ Kiểm tra chất lượng bằng mẫu gồm vật tư, công, sơn, tên trùn
 ## Kiểm tra tự động
 
 ```bash
-python -m unittest discover -s Classification -p 'test_*.py'
+python -m unittest discover -s tests -p 'test_*.py'
 ```
 
 Tài liệu API: [Gemini structured outputs](https://ai.google.dev/gemini-api/docs/structured-output).

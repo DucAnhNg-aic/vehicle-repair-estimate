@@ -6,7 +6,7 @@ Chạy với Python 3.11 trong conda `da_gemini`:
 conda activate da_gemini
 cd /home/ubuntu/ducanh/BGSC
 python -m pip install -r requirements.txt
-python ocr/read_document.py
+python -m ocr
 ```
 
 Script đọc `GEMINI_API_KEY`, `GEMINI_MODEL` từ `ocr/.env` và sử dụng
@@ -20,10 +20,10 @@ Sửa nội dung hướng dẫn trong chuỗi `PROMPT` của `prompt.py`.
 File `.py` được thực thi để lấy `PROMPT`, vì vậy chỉ dùng module do bạn kiểm soát.
 
 ```bash
-python ocr/read_document.py --dry-run
-python ocr/read_document.py --list-models
-python ocr/read_document.py '/path/to/bao gia.pdf' --model gemini-3.6-flash
-python ocr/read_document.py 'img/TAILIEUTHIETHAIXE64A33283-20260828-071310.md'
+python -m ocr --dry-run
+python -m ocr --list-models
+python -m ocr '/path/to/bao gia.pdf' --model gemini-3.6-flash
+python -m ocr 'img/TAILIEUTHIETHAIXE64A33283-20260828-071310.md'
 ```
 
 File `.md`/`.markdown` được gửi dưới dạng text UTF-8 (giữ nguyên bảng HTML
@@ -46,7 +46,7 @@ API hoặc kiểm tra JSON thất bại:
 - `elapsed_seconds`: tổng từ lúc bắt đầu xử lý đến khi lưu kết quả và xóa
   file upload tạm; không gồm khởi động Python, đọc cấu hình và ghi metadata.
 
-Lệnh chạy vẫn là `python ocr/read_document.py`, không cần thêm tham số.
+Lệnh chạy vẫn là `python -m ocr`, không cần thêm tham số.
 
 Chi phí ước tính được in trên terminal và lưu ở `metadata.json.cost`, gồm
 input không cache, cached input, output và thinking. Thinking tính theo giá
@@ -107,7 +107,7 @@ null trả `unmatched` với `matches=[]`. Không tự chọn gần đúng khi G
 
 ```bash
 # OCR độc lập
-python ocr/read_document.py '/path/to/bao_gia.pdf'
+python -m ocr '/path/to/bao_gia.pdf'
 # Mapping từ kết quả OCR, bật Gemini fallback mặc định
 python -m mapping '/path/to/result.json' --output outputs/mapped.json
 # Test exact offline, không cần key

@@ -12,7 +12,7 @@ from pydantic import Field
 
 from ocr.schema import Quotation, QuotationItem, StrictModel
 
-CODEBOOK_DIR = Path(__file__).resolve().parents[1] / "Codebook"
+CODEBOOK_DIR = Path(__file__).resolve().parents[1] / "codebook"
 
 
 class CodebookRow(StrictModel):
@@ -98,8 +98,8 @@ class GeminiMatcher:
 class CodebookMapper:
     def __init__(self, *, matcher=None, codebook_dir: str | Path = CODEBOOK_DIR):
         root = Path(codebook_dir)
-        self.service = Codebook(root / "service_Codebook phụ tùng xe.xlsx")
-        self.part = Codebook(root / "part_Codebook phụ tùng xe.xlsx")
+        self.service = Codebook(root / "service_codebook.xlsx")
+        self.part = Codebook(root / "part_codebook.xlsx")
         self.matcher = matcher
 
     def map_item(self, item: QuotationItem) -> MappingResult:

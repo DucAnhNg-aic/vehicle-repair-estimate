@@ -4,7 +4,8 @@ import json
 from unittest.mock import patch, MagicMock
 from pathlib import Path
 from openpyxl import Workbook, load_workbook
-from classify import read_rows, validate_batch, export_xlsx, main, unique_names
+from classification.classifier import read_rows, validate_batch, export_xlsx, unique_names
+from classification.__main__ import main
 
 
 class ClassificationTests(unittest.TestCase):
@@ -67,7 +68,7 @@ class ClassificationTests(unittest.TestCase):
 
     def test_resume_skips_completed_batch_and_rejects_changed_contract(self):
         run = Path(self.temp.name) / 'run'
-        argv = ['classify', '--input', str(self.path), '--sheet', 'Codebook',
+        argv = ['classification', '--input', str(self.path), '--sheet', 'Codebook',
                 '--run-dir', str(run), '--batch-size', '1', '--model', 'test-model',
                 '--env-file', str(Path(self.temp.name) / 'absent.env')]
         def response(code):
@@ -76,7 +77,7 @@ class ClassificationTests(unittest.TestCase):
             obj.output_text = json.dumps({'items': [self.item(code)]})
             obj.model_dump.return_value = {'model': 'test-model'}
             return obj
-        with patch.dict('os.environ', {'GEMINI_API_KEY': 'test'}), patch('classify.genai.Client') as factory:
+        with patch.dict('os.environ', {'GEMINI_API_KEY': 'test'}), patch('classification.__main__.genai.Client') as factory:
             create = factory.return_value.__enter__.return_value.interactions.create
             create.return_value = response('Keo kính')
             with patch('sys.argv', argv + ['--max-batches', '1']):

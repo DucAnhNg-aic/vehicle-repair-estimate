@@ -37,7 +37,7 @@ class PipelineTests(unittest.TestCase):
             w.active.append(["MA", "TEN"])
             for row in rows:
                 w.active.append(row)
-            w.save(self.root / f"{prefix}_Codebook phụ tùng xe.xlsx")
+            w.save(self.root / f"{prefix}_codebook.xlsx")
 
     def item(self, name, category):
         return self.quotation.items[0].model_copy(update={"raw_name": name, "category": category})
