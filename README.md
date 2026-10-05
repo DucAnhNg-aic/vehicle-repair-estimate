@@ -60,6 +60,43 @@ Bảng giá `gemini-3.6-flash` kiểm tra ngày 01/10/2026 tại
 trên một triệu token. Từ 01/01/2027 lần lượt là $1.50, $0.15, $7.50.
 Model chưa có bảng giá hoặc response thiếu usage sẽ có `total_usd: null`.
 
+## Luồng chính: OCR → mapping (một lệnh)
+
+```bash
+python -m pipeline 'img/bao_gia.jpg'                 # OCR + mapping (exact + Gemini fallback)
+python -m pipeline 'img/bao_gia.jpg' --exact-only    # mapping không gọi Gemini
+python -m pipeline 'img/bao_gia.jpg' --mapping-model gemini-3.6-flash
+```
+
+Mỗi lần chạy tạo `outputs/pipeline/<timestamp>/`:
+
+| File | Nội dung |
+|---|---|
+| `summary.json` | trạng thái, thời gian, kết quả, chi phí **từng bước** và **tổng** |
+| `report.txt` | báo cáo text giống log in ra terminal |
+| `ocr/` | `response.json`, `raw.txt`, `result.json`, `metadata.json` của bước OCR |
+| `mapping.json` | các trường OCR + `mapping` cho từng item |
+| `mapping.calls.json` | từng lời gọi Gemini fallback: response, usage, cost, latency |
+
+`summary.json` luôn được ghi kể cả khi một bước lỗi (bước sau ghi `skipped`,
+token đã tốn vẫn được tính). Gọi từ Python: `from pipeline import run_pipeline`.
+
+## Chi phí Gemini (`cost/`)
+
+Nơi duy nhất chứa bảng giá và logic tính tiền, dùng chung cho `ocr`, `mapping`,
+`classification`, `pipeline`. Thêm model mới: thêm một dòng vào `PRICES` trong
+`cost/pricing.py`.
+
+```python
+from cost import cost_from_response, sum_costs
+
+cost = cost_from_response(response.model_dump(mode="json"), fallback_model=model)
+total = sum_costs([cost_ocr, *cost_mapping_calls])  # total_usd, tokens, complete, unpriced_calls
+```
+
+Đây là ước tính theo Standard paid tier, không phải hóa đơn. `total_usd` của
+`sum_costs` chỉ gồm lời gọi đã định giá; `complete=False` nếu có lời gọi chưa định giá.
+
 ## Endpoint được chọn
 
 - `POST https://generativelanguage.googleapis.com/v1beta/interactions`:

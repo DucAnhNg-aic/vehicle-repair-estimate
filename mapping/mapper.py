@@ -10,6 +10,7 @@ from typing import Literal
 from openpyxl import load_workbook
 from pydantic import Field
 
+from cost import cost_from_response, estimate_cost, sum_costs
 from ocr.schema import Quotation, QuotationItem, StrictModel
 
 CODEBOOK_DIR = Path(__file__).resolve().parents[1] / "codebook"
@@ -60,7 +61,7 @@ class Codebook:
 
 
 class GeminiMatcher:
-    """Shared-client fallback; records usage and duration for each request."""
+    """Shared-client fallback; records usage, cost and duration for each request."""
     def __init__(self, client, model: str):
         self.client, self.model = client, model
         self.calls: list[dict] = []
@@ -83,6 +84,7 @@ class GeminiMatcher:
                 store=False,
             )
             audit["response"] = response.model_dump(mode="json", exclude_none=True)
+            audit["cost"] = cost_from_response(audit["response"], self.model)
             if response.status != "completed" or not response.output_text:
                 raise RuntimeError("Gemini mapping chưa hoàn thành hoặc trả rỗng")
             selection = Selection.model_validate_json(response.output_text)
@@ -91,8 +93,13 @@ class GeminiMatcher:
             audit["status"] = "success"
             return selection.name
         finally:
+            audit.setdefault("cost", estimate_cost(self.model, None))
             audit["elapsed_seconds"] = round(time.perf_counter() - started, 3)
             self.calls.append(audit)
+
+    def cost_summary(self) -> dict:
+        """Tổng chi phí mọi lời gọi fallback đã thực hiện."""
+        return sum_costs(call["cost"] for call in self.calls)
 
 
 class CodebookMapper:

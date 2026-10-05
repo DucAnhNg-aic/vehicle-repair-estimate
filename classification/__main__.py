@@ -14,8 +14,7 @@ from google import genai
 from google.genai import types
 from tqdm import tqdm
 
-# Reuse cost accounting from the OCR package.
-from ocr.cost import estimate_cost
+from cost import cost_from_response
 from .classifier import digest, export_xlsx, read_rows, unique_names, validate_batch, write_json
 from .prompt import PROMPT
 from .schema import ClassificationBatch
@@ -91,7 +90,7 @@ def main():
                     elapsed = time.perf_counter() - started
                     data = response.model_dump(mode="json", exclude_none=True)
                     write_json(prefix.with_suffix(".response.json"), data)
-                    cost = estimate_cost(data.get("model") or model, data.get("usage"), datetime.now(timezone.utc).date())
+                    cost = cost_from_response(data, model)
                     write_json(prefix.with_suffix(".metrics.json"), {"seconds": elapsed, "usage": data.get("usage"), "cost": cost})
                     if response.status != "completed":
                         raise ValueError(f"Batch {index}: status={response.status}")

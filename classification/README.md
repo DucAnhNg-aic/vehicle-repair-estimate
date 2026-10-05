@@ -89,7 +89,7 @@ và phát sinh thêm chi phí.
 - `results.json`: log đầy đủ từng mã/tên, dòng Excel và item_type được ghép lại.
 - `summary.json`: số dòng Excel đã ghép, số tên unique đã phân loại, thống kê
   item_type theo tên unique, thời gian gọi
-  API cộng dồn và chi phí đã xác định. Chi phí dùng bảng giá trong `ocr/cost.py`;
+  API cộng dồn và chi phí đã xác định. Chi phí dùng bảng giá trong `cost/pricing.py`;
   đây là ước tính, cần đối chiếu bảng giá hiện hành khi vận hành.
 - `classified.xlsx`: chỉ xuất tên này khi tất cả dòng hoàn tất.
 - `classified.partial.xlsx`: snapshot khi giới hạn batch hoặc gặp lỗi;

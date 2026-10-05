@@ -43,6 +43,10 @@ def main():
         finally:
             write_json(args.output.with_suffix(".calls.json"), matcher.calls if matcher else [])
     print(f"Đã map {len(results)} dòng: {args.output}")
+    if matcher:
+        total = matcher.cost_summary()
+        print(f"Gemini fallback: {total['calls']} lời gọi; chi phí ước tính ${total['total_usd']:.6f} USD"
+              + ("" if total["complete"] else f" (thiếu {total['unpriced_calls']} lời gọi chưa định giá)"))
 
 
 if __name__ == "__main__":
