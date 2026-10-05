@@ -21,7 +21,10 @@ from google.genai import types
 from schema import Quotation
 from cost import estimate_cost
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parent  # thư mục src (.env, prompt.py)
+PROJECT_ROOT = ROOT.parent
+IMG_DIR = PROJECT_ROOT / "img"
+OUTPUT_DIR = PROJECT_ROOT / "outputs"
 SUPPORTED = {"application/pdf", "image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"}
 INLINE_LIMIT = 15 * 1024 * 1024  # Leave room for base64 expansion and prompt.
 
@@ -90,7 +93,7 @@ def main() -> int:
     parser.add_argument("--prompt", type=Path, default=ROOT / "prompt.py",
                         help="File .py khai báo PROMPT hoặc file text UTF-8; mặc định prompt.py.")
     parser.add_argument("--model", help="Ưu tiên hơn GEMINI_MODEL trong env/.env.")
-    parser.add_argument("--output-dir", type=Path, default=ROOT / "outputs")
+    parser.add_argument("--output-dir", type=Path, default=OUTPUT_DIR)
     parser.add_argument("--timeout", type=float, default=180, help="Timeout mỗi HTTP request và chờ upload (giây).")
     parser.add_argument("--list-models", action="store_true", help="Liệt kê model key hiện tại được truy cập.")
     parser.add_argument("--dry-run", action="store_true", help="Kiểm tra input/config, không gọi API.")
@@ -113,9 +116,9 @@ def main() -> int:
 
     file_path = args.file
     if file_path is None:
-        samples = sorted(ROOT.glob("*.jpg"))
+        samples = sorted(IMG_DIR.glob("*.jpg"))
         if len(samples) != 1:
-            parser.error("Hãy chỉ định file khi BGSC không có đúng một ảnh JPG mẫu.")
+            parser.error(f"Hãy chỉ định file khi {IMG_DIR} không có đúng một ảnh JPG mẫu.")
         file_path = samples[0]
     file_path = file_path.resolve()
     if not file_path.is_file() or file_path.stat().st_size == 0:
