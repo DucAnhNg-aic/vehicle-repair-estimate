@@ -4,7 +4,8 @@ from datetime import date
 from decimal import Decimal
 
 PRICING_SOURCE = "https://ai.google.dev/gemini-api/docs/pricing"
-PRICING_CHECKED = "2026-10-01"
+PRICING_CHECKED = "2026-10-05"
+VERIFIED_MODELS = {"gemini-3.6-flash", "gemini-3.8-flash"}  # cùng bảng giá Standard
 
 
 def estimate_cost(model: str, usage: dict | None, pricing_date: date) -> dict:
@@ -13,7 +14,7 @@ def estimate_cost(model: str, usage: dict | None, pricing_date: date) -> dict:
         "pricing_source": PRICING_SOURCE, "pricing_checked_date": PRICING_CHECKED,
         "pricing_date": pricing_date.isoformat(), "total_usd": None,
     }
-    if model.removeprefix("models/") != "gemini-3.6-flash":
+    if model.removeprefix("models/") not in VERIFIED_MODELS:
         return {**result, "reason": "Model chưa có bảng giá được xác minh."}
     if not usage:
         return {**result, "reason": "Response không có token usage."}
