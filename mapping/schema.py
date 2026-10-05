@@ -11,7 +11,6 @@ from ocr.schema import StrictModel
 class CodebookRow(StrictModel):
     code: str
     name: str
-    sheet: str
     row: int
 
 

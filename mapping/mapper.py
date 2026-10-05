@@ -34,7 +34,7 @@ class Codebook:
                         continue
                     if not isinstance(code, str) or not isinstance(name, str) or not code.strip() or not name.strip():
                         raise ValueError(f"MA/TEN không hợp lệ: {self.path}, {sheet.title}:{number}")
-                    self.by_name[name].append(CodebookRow(code=code, name=name, sheet=sheet.title, row=number))
+                    self.by_name[name].append(CodebookRow(code=code, name=name, row=number))
         finally:
             workbook.close()
         if not self.by_name:

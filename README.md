@@ -155,7 +155,7 @@ python -m unittest discover -s tests -v
 ```
 
 CLI mapping giữ các trường OCR và thêm `mapping` vào mỗi item, theo đúng thứ tự.
-`mapping.matches` chứa `code`, `name`, `sheet`, `row`; không loại các dòng trùng.
+`mapping.matches` chứa `code`, `name`, `row`; không loại các dòng trùng.
 File `.calls.json` bên cạnh output lưu response/usage và latency từng lời gọi
 Gemini, kể cả khi mapping thất bại. Chạy lại cùng `--output` sẽ ghi đè file đó.
 `CodebookMapper()` không truyền matcher chỉ chạy exact, phù hợp test offline.
