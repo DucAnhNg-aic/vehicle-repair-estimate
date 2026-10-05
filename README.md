@@ -137,9 +137,10 @@ with genai.Client() as client:  # GEMINI_API_KEY từ environment
 Mapping dùng `raw_name` so sánh **nguyên văn** với `TEN` (phân biệt hoa/thường,
 không bỏ dấu/trim). `labor` và `paint` dùng service codebook; `material` dùng
 part codebook. Exact match trả tất cả dòng có cùng tên, không gọi Gemini.
-Nếu không exact, gửi item OCR và toàn bộ danh sách tên duy nhất của codebook
-được chọn cho Gemini. Gemini chọn một tên hoặc null; chương trình tra lại tất cả
-mã `MA` của tên đó. Tên ngoài danh sách/API lỗi/schema lỗi được raise;
+Các item không exact được **gộp batch**: mỗi codebook 1 request (service, rồi part;
+chia chunk theo `BATCH_SIZE=50`), gửi các item có `index` cùng danh sách tên duy nhất.
+Gemini trả `selections` đúng đủ index `0..n-1`, mỗi phần tử là một tên hoặc null;
+chương trình tra lại tất cả mã `MA` của tên đó. Tên ngoài danh sách/API lỗi/schema lỗi được raise;
 null trả `unmatched` với `matches=[]`. Không tự chọn gần đúng khi Gemini lỗi.
 
 ```bash

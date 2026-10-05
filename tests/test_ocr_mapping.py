@@ -50,32 +50,79 @@ class PipelineTests(unittest.TestCase):
             self.assertEqual([m.code for m in result.matches], ["S1", "S2"])
             self.assertEqual(result.method, "exact")
         self.assertEqual(mapper.map_item(self.item("Sơn cản", "material")).matches[0].code, "P1")
-        matcher.select.assert_not_called()
+        matcher.select_many.assert_not_called()
 
     def test_fallback_names_and_duplicate_expansion(self):
         matcher = Mock()
-        matcher.select.return_value = "Sơn cản"
+        matcher.select_many.return_value = ["Sơn cản"]
         mapper = CodebookMapper(codebook_dir=self.root, matcher=matcher)
         result = mapper.map_item(self.item("sơn lại cản", "paint"))
         self.assertEqual(result.method, "gemini")
         self.assertEqual(len(result.matches), 2)
-        self.assertEqual(matcher.select.call_args.args[1], ["Sơn cản"])
-        matcher.select.return_value = None
+        self.assertEqual(matcher.select_many.call_args.args[1], ["Sơn cản"])
+        matcher.select_many.return_value = [None]
         self.assertEqual(mapper.map_item(self.item("unknown", "material")).method, "unmatched")
-        self.assertEqual(matcher.select.call_args.args[1], ["Sơn cản", "Cản trước"])
-        matcher.select.return_value = "invented"
+        self.assertEqual(matcher.select_many.call_args.args[1], ["Sơn cản", "Cản trước"])
+        matcher.select_many.return_value = ["invented"]
         with self.assertRaises(ValueError):
             mapper.map_item(self.item("unknown", "material"))
 
-    def test_gemini_invalid_and_null(self):
+    def test_batch_sends_one_request_per_codebook_and_keeps_order(self):
+        matcher = Mock()
+        matcher.select_many.side_effect = lambda items, names: [
+            "Sơn cản" if i.raw_name == "sơn lại cản" else None for i in items]
+        mapper = CodebookMapper(codebook_dir=self.root, matcher=matcher)
+        items = [self.item("sơn lại cản", "paint"), self.item("Sơn cản", "labor"), self.item("không có", "labor"),
+                 self.item("Cản trước", "material"), self.item("lạ", "material"), self.item("sơn lại cản", "labor")]
+        results = mapper.map_items(items)
+        self.assertEqual([r.method for r in results], ["gemini", "exact", "unmatched", "exact", "unmatched", "gemini"])
+        self.assertEqual([r.raw_name for r in results], [i.raw_name for i in items])
+        self.assertEqual(matcher.select_many.call_count, 2)  # service (3 item) + part (1 item), không gọi lẻ
+        service_call, part_call = matcher.select_many.call_args_list
+        self.assertEqual([i.raw_name for i in service_call.args[0]], ["sơn lại cản", "không có", "sơn lại cản"])
+        self.assertEqual([i.raw_name for i in part_call.args[0]], ["lạ"])
+
+    def test_batch_is_chunked_by_batch_size(self):
+        matcher = Mock()
+        matcher.select_many.side_effect = lambda items, names: [None] * len(items)
+        mapper = CodebookMapper(codebook_dir=self.root, matcher=matcher)
+        mapper.BATCH_SIZE = 2
+        results = mapper.map_items([self.item(f"lạ {n}", "paint") for n in range(5)])
+        self.assertEqual([len(c.args[0]) for c in matcher.select_many.call_args_list], [2, 2, 1])
+        self.assertEqual(len(results), 5)
+
+    def test_no_matcher_leaves_unmatched_without_calls(self):
+        results = CodebookMapper(codebook_dir=self.root).map_items([self.item("lạ", "paint"), self.item("Sơn cản", "paint")])
+        self.assertEqual([r.method for r in results], ["unmatched", "exact"])
+
+    def test_gemini_batch_validation(self):
         client = Mock()
         matcher = GeminiMatcher(client, "test")
-        client.interactions.create.return_value = response({"name": "invented"})
-        with self.assertRaises(ValueError):
-            matcher.select(self.item("unknown", "paint"), ["Sơn cản"])
-        client.interactions.create.return_value = response({"name": None})
+        items = [self.item("a", "paint"), self.item("b", "paint")]
+        sel = lambda *pairs: response({"selections": [{"index": i, "name": n} for i, n in pairs]})
+        client.interactions.create.return_value = sel((0, "invented"), (1, None))
+        with self.assertRaises(ValueError):  # tên ngoài codebook
+            matcher.select_many(items, ["Sơn cản"])
+        client.interactions.create.return_value = sel((0, "Sơn cản"))
+        with self.assertRaises(ValueError):  # thiếu index 1
+            matcher.select_many(items, ["Sơn cản"])
+        client.interactions.create.return_value = sel((0, "Sơn cản"), (0, None))
+        with self.assertRaises(ValueError):  # trùng index, thiếu index 1
+            matcher.select_many(items, ["Sơn cản"])
+        client.interactions.create.return_value = sel((1, None), (0, "Sơn cản"))  # đảo thứ tự vẫn đúng
+        self.assertEqual(matcher.select_many(items, ["Sơn cản"]), ["Sơn cản", None])
+        self.assertEqual(client.interactions.create.call_count, 4)
+        self.assertEqual(len(matcher.calls), 4)
+        self.assertEqual(matcher.calls[-1]["items"], ["a", "b"])
+        self.assertEqual(matcher.calls[-1]["status"], "success")
+
+    def test_gemini_single_select_and_null(self):
+        client = Mock()
+        matcher = GeminiMatcher(client, "test")
+        client.interactions.create.return_value = response({"selections": [{"index": 0, "name": None}]})
         self.assertIsNone(matcher.select(self.item("unknown", "paint"), ["Sơn cản"]))
-        self.assertEqual(len(matcher.calls), 2)
+        sent = json.loads(client.interactions.create.call_args.kwargs["input"])
+        self.assertEqual([i["index"] for i in sent["items"]], [0])
 
     def test_ocr_api_preserves_artifacts_and_client(self):
         client = Mock()

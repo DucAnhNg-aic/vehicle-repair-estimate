@@ -57,8 +57,8 @@ class PipelineRunTests(unittest.TestCase):
     def test_full_run_logs_results_and_costs_per_step(self):
         self.client.interactions.create.side_effect = [
             response(self.quotation.model_dump(mode="json"), OCR_USAGE),  # OCR
-            response({"name": "Cản trước"}, MAP_USAGE),                    # fallback: Nẹp cản trước
-            response({"name": None}, MAP_USAGE),                           # fallback: Không có
+            response({"selections": [{"index": 0, "name": None}]}, MAP_USAGE),            # 1 request service: Không có
+            response({"selections": [{"index": 0, "name": "Cản trước"}]}, MAP_USAGE),     # 1 request part: Nẹp cản trước
         ]
         summary = self.run_pipeline()
         run_dir = Path(summary["run_dir"])
