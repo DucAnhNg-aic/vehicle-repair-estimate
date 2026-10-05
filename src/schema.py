@@ -102,11 +102,6 @@ class QuotationItem(StrictModel):
     source_evidence: str = Field(
         description="Đoạn trích nguyên văn từ tài liệu làm căn cứ cho dòng này "
                     "(ví dụ tên hạng mục như in trên tài liệu).")
-    confidence: Literal["high", "medium", "low"] = Field(
-        description="Mức tự tin khi đọc dòng này. high: chữ và số đọc rõ, đúng cột. "
-                    "medium: có phần mờ hoặc phải suy luận (ví dụ category, operation, vehicle_part). "
-                    "low: có trường nghi ngờ (khó đọc, không chắc số tiền thuộc cột nào); "
-                    "khi đó giữ raw value, không tự sửa.")
 
 
 class Quotation(StrictModel):

@@ -72,5 +72,5 @@ Sau khi extract:
 - Kiểm tra số lượng row có bị bỏ sót hay không.
 - Kiểm tra các số tiền có bị lấy nhầm sang cột bên cạnh hay không.
 - Không được tự sửa số chỉ vì thấy phép tính tổng không khớp.
-- Nếu một trường nghi ngờ, giữ raw value và đánh dấu confidence thấp.
+- Nếu một trường nghi ngờ, giữ raw value đúng như đọc được, không tự sửa hay suy đoán; nếu không đọc được thì trả null.
 """
