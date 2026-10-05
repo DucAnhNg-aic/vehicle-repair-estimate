@@ -3,7 +3,7 @@
 PROMPT = """Bạn là hệ thống trích xuất dữ liệu từ báo giá sửa chữa ô tô.
 
 Nhiệm vụ:
-1. Đọc toàn bộ nội dung bảng báo giá trong ảnh.
+1. Đọc toàn bộ nội dung bảng báo giá trong tài liệu.
 2. Trích xuất tất cả các hạng mục công việc, phụ tùng, vật tư.
 3. Phân loại và chuẩn hóa từng hạng mục theo các quy tắc bên dưới.
 4. Không được map sang mã hạng mục chuẩn của đối tác bảo hiểm.
@@ -37,17 +37,7 @@ Lưu ý:
   Tên hạng mục/công việc đúng nguyên văn trong tài liệu.
 
 - operation:
-  Loại thao tác chính, ví dụ:
-  "paint",
-  "repair",
-  "bodywork",
-  "remove_install",
-  "replace",
-  "weld",
-  "reshape",
-  "polish",
-  "clean",
-  "other"
+  Loại thao tác chính, theo giá trị cho phép trong schema.
 
 - vehicle_part:
   Bộ phận xe được nhắc đến trong tên công việc, ví dụ:
@@ -65,7 +55,6 @@ Lưu ý:
      - "Tháo lắp phục vụ sơn"
      - "Công tháo lắp"
      thì item_name là tên công việc đã được chuẩn hóa nhẹ, không được tự gán sang bộ phận xe.
-  3. Không map item_name sang danh mục/mã chuẩn bên ngoài.
 
 Ví dụ:
 "Sơn cửa sau phải (trong & ngoài)"
@@ -98,11 +87,7 @@ Với mỗi dòng, trích xuất:
   "Phần phụ tùng/dầu mỡ/vật tư".
 
 - section_type:
-  Một trong:
-  "service",
-  "paint_service",
-  "material",
-  "unknown"
+  Loại section theo giá trị cho phép trong schema.
 
 Không được chỉ dựa vào tên section nếu nội dung thực tế cho thấy khác.
 
@@ -195,8 +180,4 @@ Sau khi extract:
 - Kiểm tra các số tiền có bị lấy nhầm sang cột bên cạnh hay không.
 - Không được tự sửa số chỉ vì thấy phép tính tổng không khớp.
 - Nếu một trường nghi ngờ, giữ raw value và đánh dấu confidence thấp.
-
-## Output
-
-Chỉ trả JSON hợp lệ theo schema được cung cấp trong yêu cầu API, không kèm Markdown hoặc lời giải thích.
 """
