@@ -116,6 +116,18 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(matcher.calls[-1]["items"], ["a", "b"])
         self.assertEqual(matcher.calls[-1]["status"], "success")
 
+    def test_prompt_per_codebook(self):
+        from mapping.prompt import PART_INSTRUCTION, SERVICE_INSTRUCTION
+        client = Mock()
+        matcher = GeminiMatcher(client, "test")
+        client.interactions.create.return_value = response({"selections": [{"index": 0, "name": None}]})
+        matcher.select_many([self.item("x", "material")], ["Cản"])
+        self.assertEqual(client.interactions.create.call_args.kwargs["system_instruction"], PART_INSTRUCTION)
+        matcher.select_many([self.item("x", "paint")], ["Sơn cản"])
+        self.assertEqual(client.interactions.create.call_args.kwargs["system_instruction"], SERVICE_INSTRUCTION)
+        self.assertEqual([c["prompt"] for c in matcher.calls], ["part", "service"])
+        self.assertNotEqual(PART_INSTRUCTION, SERVICE_INSTRUCTION)
+
     def test_gemini_single_select_and_null(self):
         client = Mock()
         matcher = GeminiMatcher(client, "test")

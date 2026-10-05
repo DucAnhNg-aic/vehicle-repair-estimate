@@ -10,7 +10,7 @@ from openpyxl import load_workbook
 
 from cost import cost_from_response, estimate_cost, sum_costs
 from ocr.schema import Quotation, QuotationItem
-from .prompt import SYSTEM_INSTRUCTION
+from .prompt import INSTRUCTIONS
 from .schema import BatchSelection, CodebookRow, ItemSelection, MappingResult
 
 CODEBOOK_DIR = Path(__file__).resolve().parents[1] / "codebook"
@@ -46,7 +46,7 @@ class GeminiMatcher:
 
     Records usage, cost and duration for each request in ``calls``.
     """
-    SYSTEM_INSTRUCTION = SYSTEM_INSTRUCTION
+    INSTRUCTIONS = INSTRUCTIONS  # service / part: mỗi codebook một prompt riêng
 
     def __init__(self, client, model: str):
         self.client, self.model = client, model
@@ -55,13 +55,14 @@ class GeminiMatcher:
     def select_many(self, items: list[QuotationItem], names: list[str]) -> list[str | None]:
         """Một request cho cả ``items``; trả về tên (hoặc None) theo đúng thứ tự ``items``."""
         started = time.perf_counter()
+        kind = "part" if all(item.category == "material" for item in items) else "service"
         audit = {"items": [item.raw_name for item in items], "categories": sorted({item.category for item in items}),
-                 "model": self.model, "status": "failed"}
+                 "prompt": kind, "model": self.model, "status": "failed"}
         try:
             payload = {"items": [dict(item.model_dump(mode="json"), index=i) for i, item in enumerate(items)],
                        "names": names}
             response = self.client.interactions.create(
-                model=self.model, system_instruction=self.SYSTEM_INSTRUCTION,
+                model=self.model, system_instruction=self.INSTRUCTIONS[kind],
                 input=json.dumps(payload, ensure_ascii=False),
                 response_format={"type": "text", "mime_type": "application/json", "schema": BatchSelection.model_json_schema()},
                 store=False,
