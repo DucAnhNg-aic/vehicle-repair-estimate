@@ -1,0 +1,18 @@
+.env
+.venv/
+__pycache__/
+.pytest_cache/
+outputs/
+
+# Tài liệu riêng / dữ liệu
+img/
+*.jpg
+*.jpeg
+*.png
+*.webp
+*.heic
+*.heif
+*.pdf
+*.csv
+*.xlsx
+*.xls
