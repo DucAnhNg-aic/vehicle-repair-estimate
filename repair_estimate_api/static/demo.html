@@ -1,145 +1,829 @@
 <!doctype html>
-<html lang="vi">
+<html lang="vi" class="h-full bg-slate-50 antialiased">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>VRE · Demo báo giá sửa chữa</title>
-<style>
-:root{--navy:#0f2e44;--navy-2:#16425f;--teal:#0a8f84;--teal-d:#067069;--teal-l:#e3f5f2;--bg:#f2f5f9;--card:#fff;--line:#e1e8ef;--text:#15293a;--muted:#667b8c;--amber:#b45309;--amber-l:#fef3c7;--blue:#1d4ed8;--blue-l:#e0eaff;--red:#b42318;--red-l:#fee4e2;--green:#067647;--green-l:#dcfae6;--violet:#6d28d9;--violet-l:#ede9fe}
-*{box-sizing:border-box}
-html{-webkit-text-size-adjust:100%}
-body{margin:0;font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--text);background:var(--bg)}
-header{background:linear-gradient(120deg,var(--navy),var(--navy-2));color:#fff}
-.bar{max-width:1240px;margin:0 auto;padding:18px 24px;display:flex;align-items:center;gap:18px}
-.logo{width:92px;height:48px;object-fit:contain;background:#fff;border-radius:10px;padding:6px;flex:none}
-.bar small{display:block;color:#8fe0d6;letter-spacing:.14em;font-size:12px;font-weight:600}
-.bar h1{margin:2px 0 0;font-size:22px;font-weight:650;letter-spacing:-.01em}
-.bar p{margin:2px 0 0;color:#bcd0de;font-size:13.5px}
-main{max-width:1240px;margin:24px auto 48px;padding:0 24px;display:grid;grid-template-columns:360px minmax(0,1fr);gap:20px;align-items:start}
-.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px;box-shadow:0 1px 2px #0f2e4408,0 8px 24px -12px #0f2e4422}
-.side{position:sticky;top:16px}
-h2{margin:0 0 16px;font-size:16px;font-weight:650;display:flex;align-items:center;gap:8px}
-h2 .step{width:22px;height:22px;border-radius:50%;background:var(--teal-l);color:var(--teal-d);font-size:12px;display:grid;place-items:center;font-weight:700}
-label.field{display:block;font-size:12.5px;font-weight:600;color:var(--muted);margin:16px 0 6px}
-input,select,button{font:inherit;color:inherit}
-select,input[type=number]{width:100%;padding:10px 12px;border:1px solid #cfdae4;border-radius:10px;background:#fff;transition:border-color .15s,box-shadow .15s}
-select:focus,input[type=number]:focus{outline:0;border-color:var(--teal);box-shadow:0 0 0 3px #0a8f8426}
-.drop{position:relative;border:2px dashed #b9c9d6;border-radius:14px;background:#f8fafc;padding:22px 16px;text-align:center;transition:.15s;cursor:pointer}
-.drop:hover,.drop.over{border-color:var(--teal);background:var(--teal-l)}
-.drop input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
-.drop .ico{font-size:26px;line-height:1}
-.drop strong{display:block;margin-top:6px;font-size:14px;overflow-wrap:anywhere}
-.drop span{display:block;color:var(--muted);font-size:12.5px;margin-top:2px}
-.drop.has{border-style:solid;border-color:var(--teal);background:var(--teal-l)}
-#preview{display:none;max-width:100%;max-height:200px;border-radius:10px;margin:14px auto 0;border:1px solid var(--line)}
-button{border:0;border-radius:10px;padding:12px 18px;font-weight:600;cursor:pointer;transition:background .15s,transform .05s}
-button:active{transform:translateY(1px)}
-#submit{width:100%;margin-top:20px;background:var(--teal);color:#fff}
-#submit:hover{background:var(--teal-d)}
-button:disabled{opacity:.55;cursor:wait}
-.hint{color:var(--muted);font-size:12.5px;margin:12px 0 0}
-#status{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border-radius:12px;background:#eef3f8;color:var(--text);font-size:14px;white-space:pre-wrap;overflow-wrap:anywhere;margin-bottom:18px}
-#status::before{content:"";flex:none;width:10px;height:10px;border-radius:50%;background:#9db1c1;margin-top:6px}
-#status[data-state=busy]{background:var(--blue-l);color:#173a8f}
-#status[data-state=busy]::before{background:none;border:2px solid #9db8f5;border-top-color:var(--blue);width:14px;height:14px;margin-top:3px;animation:spin .8s linear infinite}
-#status[data-state=ok]{background:var(--green-l);color:var(--green)}
-#status[data-state=ok]::before{background:var(--green)}
-#status[data-state=err]{background:var(--red-l);color:var(--red)}
-#status[data-state=err]::before{background:var(--red)}
-@keyframes spin{to{transform:rotate(360deg)}}
-#result{display:none}
-#document{margin:0 0 16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:16px}
-#document .kv{background:#f6f9fb;border:1px solid var(--line);border-radius:12px;padding:10px 12px}
-#document dt{color:var(--muted);font-size:12px;margin:0}
-#document dd{margin:2px 0 0;font-weight:600;overflow-wrap:anywhere}
-.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:0 0 20px}
-.stat{border:1px solid var(--line);border-radius:12px;padding:14px;background:linear-gradient(180deg,#fff,#f6f9fb)}
-.stat .lbl{display:flex;justify-content:space-between;align-items:center;color:var(--muted);font-size:12.5px;font-weight:600}
-.stat strong{display:block;font-size:26px;letter-spacing:-.02em;margin:4px 0 2px}
-.stat .sub{color:var(--muted);font-size:12.5px;line-height:1.5}
-.table-wrap{overflow:auto;border:1px solid var(--line);border-radius:12px}
-table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:640px}
-th{position:sticky;top:0;text-align:left;color:var(--muted);background:#f6f9fb;font-size:12px;font-weight:650;text-transform:uppercase;letter-spacing:.04em}
-td,th{padding:11px 12px;border-bottom:1px solid var(--line);vertical-align:top}
-tbody tr:last-child td{border-bottom:0}
-tbody tr:hover{background:#fafcfd}
-td.num{color:var(--muted);width:40px}
-.badge{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}
-.b-material{background:var(--blue-l);color:var(--blue)}.b-labor{background:var(--violet-l);color:var(--violet)}.b-paint{background:var(--amber-l);color:var(--amber)}
-.m-exact{background:var(--green-l);color:var(--green)}.m-gemini{background:var(--violet-l);color:var(--violet)}.m-unmatched{background:var(--amber-l);color:var(--amber)}
-.chip{display:block;margin-bottom:4px}
-.chip b{font-weight:600}
-.chip code{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--teal-l);color:var(--teal-d);padding:1px 6px;border-radius:6px;margin-left:6px}
-.none{color:var(--muted)}
-.actions{display:flex;gap:10px;margin-top:16px}
-#download{background:var(--navy);color:#fff}
-#download:hover{background:var(--navy-2)}
-details{margin-top:16px}
-summary{cursor:pointer;color:var(--muted);font-size:13.5px;font-weight:600}
-pre{font:12px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;background:#0f2e44;color:#d6e6f2;padding:14px;border-radius:12px;overflow:auto;max-height:380px}
-.empty{text-align:center;color:var(--muted);padding:34px 10px 18px}
-.empty .ico{font-size:34px}
-@media(max-width:900px){main{grid-template-columns:1fr}.side{position:static}.stats{grid-template-columns:1fr}.bar{padding:16px}}
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VRE · Hệ thống đọc & đối chiếu báo giá tự động</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+          },
+          colors: {
+            brand: {
+              50: '#f0fdfa',
+              100: '#ccfbf1',
+              500: '#14b8a6',
+              600: '#0d9488',
+              700: '#0f766e',
+              800: '#115e59',
+              900: '#134e4a',
+            },
+            navy: {
+              800: '#162f44',
+              900: '#0e2030',
+              950: '#08141f',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    /* Custom scrollbar */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 9999px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+  </style>
 </head>
-<body>
-<header><div class="bar">
-<img class="logo" src="/demo/logo.png" alt="AICycle" onerror="this.style.display='none'">
-<div><small>VEHICLE REPAIR ESTIMATE</small><h1>Đọc &amp; đối chiếu báo giá</h1><p>Upload tài liệu, xem kết quả OCR và mã codebook trong cùng một màn hình.</p></div>
-</div></header>
-<main>
-<section class="card side"><h2><span class="step">1</span>Tài liệu đầu vào</h2>
-<form id="form">
-<div class="drop" id="drop"><input id="file" type="file" accept=".jpg,.jpeg,.png,.webp,.heic,.heif,.pdf,.md,.markdown" required aria-label="Ảnh / PDF / Markdown">
-<div class="ico">📄</div><strong id="fileName">Chọn hoặc kéo thả tài liệu</strong><span id="fileHint">Ảnh · PDF · Markdown</span></div>
-<img id="preview" alt="Ảnh báo giá đã chọn">
-<label class="field" for="ocr">Model OCR</label><select id="ocr"></select>
-<label class="field" for="mapping">Model mapping</label><select id="mapping"></select>
-<label class="field" for="timeout">Timeout mỗi request (giây)</label><input id="timeout" type="number" min="10" max="600" value="180" required>
-<button id="submit" type="submit">Xử lý báo giá</button>
-<p class="hint">Luôn chạy OCR → mapping. Kết quả tự xuất hiện khi xử lý hoàn tất.</p>
-</form></section>
-<section class="card"><h2><span class="step">2</span>Kết quả xử lý</h2>
-<div id="status" role="status" aria-live="polite">Chọn tài liệu để bắt đầu.</div>
-<div id="result">
-<dl id="document"></dl>
-<div class="stats" id="stats"></div>
-<div class="table-wrap"><table><thead><tr><th>#</th><th>Hạng mục OCR</th><th>Loại</th><th>Tên đối chiếu / mã</th><th>Phương pháp</th></tr></thead><tbody id="rows"></tbody></table></div>
-<div class="actions"><button id="download" type="button">⬇ Tải kết quả JSON</button></div>
-<details><summary>Xem JSON đầy đủ</summary><pre id="json"></pre></details></div>
-<div id="empty" class="empty"><div class="ico">🧾</div><p>Kết quả gồm dữ liệu tài liệu, từng hạng mục, mã codebook và thời gian/chi phí của từng bước.</p></div>
-</section>
-</main>
-<script>
-const $=id=>document.getElementById(id);let config=null,result=null,previewUrl=null;
-const headers=()=>({});
-const DOC_LABELS={estimate_number:'Số báo giá',date:'Ngày',vehicle_plate:'Biển số',vehicle_model:'Loại xe',vin:'Số khung'};
-const CAT_LABELS={material:'Phụ tùng',labor:'Công',paint:'Sơn'};
-const METHOD_LABELS={exact:'Khớp chính xác',gemini:'Gemini',unmatched:'Chưa khớp'};
-const STEP_LABELS={queued:'Đang chờ worker',running:'Đang xử lý',success:'Hoàn tất',failed:'Thất bại'};
-function setStatus(state,text){const s=$('status');s.dataset.state=state;s.textContent=text;}
-async function request(url,options={}){const response=await fetch(url,{...options,headers:{...headers(),...options.headers}});const data=await response.json();if(!response.ok)throw new Error(data.detail?.message||JSON.stringify(data.detail||data));return data;}
-async function loadConfig(){config=await request('/api/v1/repair-estimate/demo-config');for(const id of ['ocr','mapping']){const selected=$(id).value;$(id).replaceChildren();for(const model of config.models){const option=document.createElement('option');option.value=option.textContent=model;$(id).append(option);}$(id).value=config.models.includes(selected)?selected:config.default_model;}}
-function showFile(file){$('drop').classList.toggle('has',!!file);$('fileName').textContent=file?file.name:'Chọn hoặc kéo thả tài liệu';$('fileHint').textContent=file?`${(file.size/1048576).toFixed(2)} MiB · bấm để đổi file`:'Ảnh · PDF · Markdown';}
-$('file').addEventListener('change',()=>{if(previewUrl)URL.revokeObjectURL(previewUrl);$('preview').style.display='none';const file=$('file').files[0];showFile(file);if(file&&['image/jpeg','image/png','image/webp'].includes(file.type)){previewUrl=URL.createObjectURL(file);$('preview').src=previewUrl;$('preview').style.display='block';}});
-for(const ev of ['dragenter','dragover'])$('drop').addEventListener(ev,()=>$('drop').classList.add('over'));
-for(const ev of ['dragleave','drop'])$('drop').addEventListener(ev,()=>$('drop').classList.remove('over'));
-function el(tag,className,text){const node=document.createElement(tag);if(className)node.className=className;if(text!==undefined)node.textContent=text;return node;}
-function badge(className,text){return el('span',`badge ${className}`,text);}
-function usd(cost){if(!cost||cost.total_usd==null)return null;return `$${Number(cost.total_usd).toFixed(4)}${cost.complete===false?' (chưa đủ định giá)':''}`;}
-function cell(row,content,className){const td=document.createElement('td');if(className)td.className=className;if(content instanceof Node)td.append(content);else td.textContent=content??'—';row.append(td);return td;}
-function render(data){result=data;$('result').style.display='block';$('empty').hidden=true;$('json').textContent=JSON.stringify(data,null,2);
-$('document').replaceChildren();for(const [key,value] of Object.entries(data.document||{})){if(value===null)continue;const box=el('div','kv');box.append(el('dt',null,DOC_LABELS[key]||key),el('dd',null,typeof value==='object'?JSON.stringify(value):String(value)));$('document').append(box);}
-$('stats').replaceChildren();for(const [name,metric] of Object.entries(data.metrics||{})){const box=el('div','stat');const head=el('div','lbl',{total:'Tổng pipeline',ocr:'OCR',mapping:'Mapping'}[name]||name);
-if(metric.cache_hit)head.append(badge('m-exact','Cache hit'));else if(name==='mapping'&&metric.cache_hits)head.append(badge('m-exact',`${metric.cache_hits} từ cache`));
-const detail=name==='mapping'?`${metric.item_count??0} hạng mục · exact ${metric.exact_count??0} · Gemini ${metric.gemini_count??0} · chưa khớp ${metric.unmatched_count??0}`:null;
-const cost=usd(metric.cost)||(metric.cache_hit?'Không gọi Gemini':'Chi phí chưa xác định');
-box.append(head,el('strong',null,`${metric.duration_seconds??'—'} s`),el('div','sub',[detail,cost].filter(Boolean).join('\n')));box.lastChild.style.whiteSpace='pre-line';$('stats').append(box);}
-$('rows').replaceChildren();(data.items||[]).forEach((item,i)=>{const row=document.createElement('tr');cell(row,i+1,'num');cell(row,item.raw_name);cell(row,badge(`b-${item.category}`,CAT_LABELS[item.category]||item.category));
-const matches=item.mapping?.matches||[];const box=document.createElement('div');if(matches.length){for(const m of matches){const chip=el('span','chip');chip.append(el('b',null,m.name),el('code',null,m.code));box.append(chip);}}else box.append(el('span','none','Chưa khớp'));cell(row,box);
-const method=item.mapping?.method;cell(row,method?badge(`m-${method}`,METHOD_LABELS[method]||method):'—');$('rows').append(row);});}
-$('form').addEventListener('submit',async event=>{event.preventDefault();$('submit').disabled=true;$('result').style.display='none';$('empty').hidden=false;try{await loadConfig();const file=$('file').files[0];if(file.size>config.max_upload_bytes)throw new Error(`File vượt giới hạn ${Math.round(config.max_upload_bytes/1048576)} MiB`);const body=new FormData();body.append('file',file);body.append('options',JSON.stringify({ocr_model:$('ocr').value,mapping_model:$('mapping').value,use_cache:true,save_mongodb:true,timeout_seconds:Number($('timeout').value)}));setStatus('busy','Đang upload tài liệu…');const job=await request('/api/v1/repair-estimate/jobs',{method:'POST',body});const start=Date.now();while(true){const state=await request(job.status_url);const text=`Job: ${job.job_id}\n${STEP_LABELS[state.status]||state.status} · ${state.step||''} · ${Math.round((Date.now()-start)/1000)} s`;if(state.status==='failed')throw new Error(state.error?.message||'Không xử lý được báo giá');if(state.status==='success'){render(await request(job.result_url));setStatus('ok',text);break;}setStatus('busy',text);await new Promise(resolve=>setTimeout(resolve,1500));}}catch(error){setStatus('err',`Lỗi: ${error.message}`);}finally{$('submit').disabled=false;}});
-$('download').addEventListener('click',()=>{if(!result)return;const url=URL.createObjectURL(new Blob([JSON.stringify(result,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download=`vre-${result.job_id}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);});
-loadConfig().catch(error=>setStatus('err',error.message));
-</script>
-</body></html>
+<body class="flex flex-col min-h-full text-slate-800 font-sans selection:bg-teal-500 selection:text-white">
+
+  <!-- TOP NAVIGATION HEADER -->
+  <header class="bg-navy-900 border-b border-navy-800 text-white shadow-sm sticky top-0 z-30">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <div class="flex items-center gap-3.5">
+        <img src="/demo/logo.png" alt="AICycle" class="h-9 w-auto object-contain bg-white rounded-lg p-1 shadow-sm" onerror="this.style.display='none'">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-bold tracking-wider uppercase text-teal-400">AICycle VRE</span>
+            <span class="bg-navy-800 text-slate-300 text-[10px] px-1.5 py-0.5 rounded font-mono font-medium border border-slate-700">v1.0</span>
+          </div>
+          <h1 class="text-sm font-semibold tracking-tight text-white sm:text-base leading-none mt-0.5">Hệ thống Trích xuất & Đối chiếu Báo giá Sửa chữa</h1>
+        </div>
+      </div>
+      
+      <!-- Right actions -->
+      <div class="flex items-center gap-2.5">
+        <button id="apiKeyBtn" type="button" class="inline-flex items-center gap-1.5 text-xs font-medium text-slate-300 hover:text-white bg-navy-800/80 hover:bg-navy-800 border border-slate-700/80 px-3 py-1.5 rounded-lg transition-colors">
+          <svg class="w-3.5 h-3.5 text-teal-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+          </svg>
+          <span id="apiKeyStatus">API Key</span>
+        </button>
+        <span class="inline-flex items-center gap-1.5 text-xs bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2.5 py-1 rounded-full font-medium">
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+          AI Sẵn sàng
+        </span>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN CONTAINER -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+      
+      <!-- LEFT COLUMN: INPUT CONTROLS -->
+      <div class="lg:col-span-4 lg:sticky lg:top-24 space-y-6">
+        <div class="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-5 sm:p-6 space-y-5">
+          <div class="flex items-center justify-between border-b border-slate-100 pb-3.5">
+            <h2 class="text-base font-bold text-slate-900 flex items-center gap-2">
+              <span class="w-6 h-6 rounded-lg bg-teal-50 text-teal-700 flex items-center justify-center text-xs font-bold border border-teal-100">1</span>
+              Tài liệu báo giá
+            </h2>
+            <span class="text-xs text-slate-400 font-medium">Ảnh, PDF, Markdown</span>
+          </div>
+
+          <form id="form" class="space-y-4">
+            <!-- DROPZONE -->
+            <div>
+              <div id="drop" class="group relative border-2 border-dashed border-slate-200 hover:border-teal-500 rounded-xl p-5 text-center transition-all bg-slate-50/50 hover:bg-teal-50/20 cursor-pointer">
+                <input id="file" type="file" accept=".jpg,.jpeg,.png,.webp,.heic,.heif,.pdf,.md,.markdown" required class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10">
+                <div class="flex flex-col items-center justify-center gap-2">
+                  <div class="w-12 h-12 rounded-xl bg-white shadow-sm border border-slate-200/80 flex items-center justify-center text-teal-600 group-hover:scale-105 group-hover:border-teal-300 transition-all">
+                    <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p id="fileName" class="text-sm font-semibold text-slate-700 group-hover:text-teal-700 transition-colors line-clamp-1">Kéo thả hoặc chọn file báo giá</p>
+                    <p id="fileHint" class="text-xs text-slate-400 mt-0.5">Hỗ trợ JPG, PNG, PDF, Markdown</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- LARGE IMAGE PREVIEW CONTAINER -->
+            <div id="previewCard" class="hidden relative group rounded-xl overflow-hidden border border-slate-200 bg-slate-900/5 shadow-inner">
+              <div class="relative w-full max-h-[380px] min-h-[160px] flex items-center justify-center p-2 bg-slate-100/60 overflow-hidden cursor-zoom-in" id="previewTrigger">
+                <img id="preview" alt="Báo giá đính kèm" class="max-h-[360px] w-auto max-w-full object-contain rounded-lg shadow-sm transition-transform duration-200 group-hover:scale-[1.02]">
+                
+                <!-- Zoom overlay badge -->
+                <div class="absolute inset-0 bg-slate-900/30 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 text-white font-medium text-xs">
+                  <span class="bg-slate-900/80 border border-white/20 px-3 py-1.5 rounded-full flex items-center gap-1.5 shadow-lg">
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
+                    </svg>
+                    Bấm để phóng to xem ảnh
+                  </span>
+                </div>
+              </div>
+              <div class="px-3 py-1.5 bg-slate-100/90 border-t border-slate-200 flex items-center justify-between text-[11px] text-slate-500">
+                <span>Xem trước tài liệu</span>
+                <span id="previewResolution">Ảnh đính kèm</span>
+              </div>
+            </div>
+
+            <!-- MODEL SETTINGS ACCORDION -->
+            <div class="pt-2 border-t border-slate-100 space-y-3">
+              <div class="flex items-center justify-between">
+                <label class="text-xs font-semibold uppercase tracking-wider text-slate-400">Cấu hình mô hình AI</label>
+              </div>
+
+              <div class="grid grid-cols-1 gap-3">
+                <div>
+                  <label for="ocr" class="block text-xs font-medium text-slate-600 mb-1">Mô hình AI OCR</label>
+                  <select id="ocr" class="w-full text-xs font-medium bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 text-slate-700 focus:bg-white focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition-all"></select>
+                </div>
+                <div>
+                  <label for="mapping" class="block text-xs font-medium text-slate-600 mb-1">Mô hình AI đối chiếu danh mục</label>
+                  <select id="mapping" class="w-full text-xs font-medium bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 text-slate-700 focus:bg-white focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition-all"></select>
+                </div>
+                <div>
+                  <label for="timeout" class="block text-xs font-medium text-slate-600 mb-1">Thời gian chờ tối đa (giây)</label>
+                  <input id="timeout" type="number" min="10" max="600" value="180" required class="w-full text-xs font-medium bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 text-slate-700 focus:bg-white focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition-all">
+                </div>
+              </div>
+            </div>
+
+            <!-- SUBMIT BUTTON -->
+            <button id="submit" type="submit" class="w-full mt-2 inline-flex items-center justify-center gap-2 bg-brand-600 hover:bg-brand-700 active:bg-brand-800 text-white font-semibold text-sm px-4 py-3 rounded-xl shadow-sm hover:shadow transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+              <svg id="submitIcon" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+              <svg id="submitSpinner" class="hidden w-4 h-4 animate-spin text-white" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+              </svg>
+              <span id="submitText">Bắt đầu phân tích báo giá</span>
+            </button>
+            <p class="text-[11px] text-center text-slate-400">Tự động kết hợp OCR bóc tách và AI đối chiếu mã Codebook phụ tùng</p>
+          </form>
+        </div>
+      </div>
+
+      <!-- RIGHT COLUMN: RESULTS & ANALYTICS -->
+      <div class="lg:col-span-8 space-y-6">
+        
+        <!-- STATUS NOTIFICATION BANNER -->
+        <div id="statusCard" class="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-4 transition-all">
+          <div class="flex items-start gap-3.5">
+            <div id="statusIndicator" class="mt-0.5 flex-none w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-400">
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center justify-between gap-2">
+                <h3 id="statusTitle" class="text-sm font-semibold text-slate-800">Trạng thái hệ thống</h3>
+                <span id="statusTime" class="text-xs font-mono text-slate-400">Sẵn sàng</span>
+              </div>
+              <p id="statusMsg" class="text-xs text-slate-500 mt-0.5 whitespace-pre-line">Chọn file báo giá ở cột bên trái và bấm phân tích để bắt đầu.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- EMPTY STATE -->
+        <div id="emptyState" class="bg-white rounded-2xl border border-dashed border-slate-200 p-12 text-center">
+          <div class="w-16 h-16 rounded-2xl bg-teal-50 text-teal-600 flex items-center justify-center mx-auto mb-4 border border-teal-100">
+            <svg class="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+          </div>
+          <h3 class="text-base font-semibold text-slate-800">Chưa có kết quả xử lý</h3>
+          <p class="text-sm text-slate-500 max-w-sm mx-auto mt-1">Kết quả sau khi chạy sẽ hiển thị thông tin chung, chỉ số hiệu năng và bảng đối chiếu mã phụ tùng chi tiết.</p>
+        </div>
+
+        <!-- MAIN RESULT CONTAINER -->
+        <div id="resultContainer" class="hidden space-y-6">
+          
+          <!-- DOCUMENT METADATA CARDS -->
+          <div class="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-5">
+            <h4 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-1.5">
+              <svg class="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              Thông tin báo giá trích xuất
+            </h4>
+            <div id="docGrid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
+
+          <!-- KPI & METRICS SUMMARY CARDS -->
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            
+            <!-- TOTAL METRIC -->
+            <div class="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-4 relative overflow-hidden">
+              <div class="flex items-center justify-between text-xs font-medium text-slate-400">
+                <span>Tổng thời gian</span>
+                <span class="p-1 rounded-md bg-slate-50 text-slate-500">
+                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </span>
+              </div>
+              <div class="mt-2 flex items-baseline gap-2">
+                <span id="metricTotalDuration" class="text-2xl font-extrabold text-slate-900 tracking-tight">—</span>
+                <span class="text-xs font-semibold text-slate-400">giây</span>
+              </div>
+              <p id="metricTotalCost" class="text-xs text-slate-500 mt-1 font-mono">Chi phí: $0.00</p>
+            </div>
+
+            <!-- OCR METRIC -->
+            <div class="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-4 relative overflow-hidden">
+              <div class="flex items-center justify-between text-xs font-medium text-slate-400">
+                <span>Bước 1: Bóc tách OCR</span>
+                <span id="ocrCacheBadge" class="hidden text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">Cache Hit</span>
+              </div>
+              <div class="mt-2 flex items-baseline gap-2">
+                <span id="metricOcrDuration" class="text-2xl font-extrabold text-slate-900 tracking-tight">—</span>
+                <span class="text-xs font-semibold text-slate-400">giây</span>
+              </div>
+              <p id="metricOcrDetail" class="text-xs text-slate-500 mt-1">Đã trích xuất các hạng mục</p>
+            </div>
+
+            <!-- MAPPING METRIC -->
+            <div class="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-4 relative overflow-hidden">
+              <div class="flex items-center justify-between text-xs font-medium text-slate-400">
+                <span>Bước 2: AI Đối chiếu</span>
+                <span id="mapCacheBadge" class="hidden text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">Dùng Cache</span>
+              </div>
+              <div class="mt-2 flex items-baseline gap-2">
+                <span id="metricMapDuration" class="text-2xl font-extrabold text-slate-900 tracking-tight">—</span>
+                <span class="text-xs font-semibold text-slate-400">giây</span>
+              </div>
+              <p id="metricMapDetail" class="text-xs text-slate-500 mt-1">Tỷ lệ đối chiếu thành công</p>
+            </div>
+
+          </div>
+
+          <!-- ACCURACY BREAKDOWN BAR -->
+          <div class="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-4 space-y-2">
+            <div class="flex items-center justify-between text-xs font-semibold text-slate-700">
+              <span>Phân bổ phương pháp đối chiếu</span>
+              <span id="matchRatioText" class="font-mono text-slate-500">0% khớp</span>
+            </div>
+            <div class="w-full h-3 rounded-full bg-slate-100 overflow-hidden flex shadow-inner">
+              <div id="barExact" class="bg-emerald-500 h-full transition-all" style="width: 0%" title="Khớp chính xác"></div>
+              <div id="barAi" class="bg-indigo-500 h-full transition-all" style="width: 0%" title="AI đối chiếu"></div>
+              <div id="barUnmatched" class="bg-amber-400 h-full transition-all" style="width: 0%" title="Chưa khớp"></div>
+            </div>
+            <div class="flex flex-wrap items-center gap-4 text-xs pt-1">
+              <span class="inline-flex items-center gap-1.5 text-slate-600">
+                <span class="w-2.5 h-2.5 rounded-sm bg-emerald-500"></span> Khớp chính xác (<span id="countExact">0</span>)
+              </span>
+              <span class="inline-flex items-center gap-1.5 text-slate-600">
+                <span class="w-2.5 h-2.5 rounded-sm bg-indigo-500"></span> AI đề xuất (<span id="countAi">0</span>)
+              </span>
+              <span class="inline-flex items-center gap-1.5 text-slate-600">
+                <span class="w-2.5 h-2.5 rounded-sm bg-amber-400"></span> Chưa khớp (<span id="countUnmatched">0</span>)
+              </span>
+            </div>
+          </div>
+
+          <!-- ITEMS TABLE CARD -->
+          <div class="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+            
+            <!-- Table Controls -->
+            <div class="p-4 border-b border-slate-100 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+              <!-- Filter Tabs -->
+              <div class="inline-flex bg-slate-100 p-0.5 rounded-xl text-xs font-medium text-slate-600 self-start">
+                <button type="button" class="tab-btn active px-3 py-1.5 rounded-lg bg-white shadow-sm text-slate-900 font-semibold" data-filter="all">Tất cả (<span id="tabCountAll">0</span>)</button>
+                <button type="button" class="tab-btn px-3 py-1.5 rounded-lg hover:text-slate-900 transition-colors" data-filter="material">Phụ tùng</button>
+                <button type="button" class="tab-btn px-3 py-1.5 rounded-lg hover:text-slate-900 transition-colors" data-filter="labor">Tiền công</button>
+                <button type="button" class="tab-btn px-3 py-1.5 rounded-lg hover:text-slate-900 transition-colors" data-filter="paint">Sơn</button>
+              </div>
+
+              <!-- Search in table -->
+              <div class="relative">
+                <input id="itemSearch" type="text" placeholder="Tìm tên hạng mục hoặc mã..." class="text-xs bg-slate-50 border border-slate-200 rounded-lg pl-8 pr-3 py-1.5 w-full sm:w-60 text-slate-700 focus:bg-white focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition-all">
+                <svg class="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </div>
+            </div>
+
+            <!-- Table View -->
+            <div class="overflow-x-auto">
+              <table class="w-full text-left text-xs text-slate-600">
+                <thead class="bg-slate-50/80 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">
+                  <tr>
+                    <th class="px-4 py-3 w-10 text-center">#</th>
+                    <th class="px-4 py-3 min-w-[200px]">Hạng mục báo giá (OCR)</th>
+                    <th class="px-4 py-3 w-28">Phân loại</th>
+                    <th class="px-4 py-3 min-w-[240px]">Đối chiếu Codebook chuẩn</th>
+                    <th class="px-4 py-3 w-32">Phương pháp</th>
+                  </tr>
+                </thead>
+                <tbody id="tableRows" class="divide-y divide-slate-100">
+                  <!-- Dynamically rendered -->
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Table Footer Actions -->
+            <div class="p-4 bg-slate-50/50 border-t border-slate-100 flex items-center justify-between">
+              <button id="downloadBtn" type="button" class="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-100 border border-slate-200 px-3.5 py-2 rounded-lg shadow-sm transition-all">
+                <svg class="w-4 h-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                Tải kết quả (JSON)
+              </button>
+              
+              <button id="toggleJsonBtn" type="button" class="text-xs text-slate-500 hover:text-slate-800 font-medium">Xem dữ liệu thô (JSON) ▼</button>
+            </div>
+
+            <!-- Foldable Raw JSON -->
+            <div id="rawJsonBlock" class="hidden border-t border-slate-200 bg-slate-900 p-4">
+              <pre id="jsonPre" class="text-[11px] font-mono text-teal-300 overflow-auto max-h-96 leading-relaxed"></pre>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+
+    </div>
+  </main>
+
+  <!-- LIGHTBOX MODAL (FOR ENLARGED IMAGE VIEW) -->
+  <div id="lightbox" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/85 backdrop-blur-sm p-4 sm:p-8 transition-opacity duration-200">
+    <div class="relative max-w-5xl max-h-[92vh] w-full flex flex-col items-center justify-center">
+      <button id="lightboxClose" type="button" class="absolute -top-10 right-0 sm:-right-8 text-white/80 hover:text-white p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors focus:outline-none">
+        <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+      <img id="lightboxImg" src="" alt="Báo giá phóng to" class="max-w-full max-h-[85vh] object-contain rounded-xl shadow-2xl border border-white/10">
+      <p class="text-white/60 text-xs mt-3">Nhấp chuột ra ngoài hoặc phím ESC để đóng ảnh</p>
+    </div>
+  </div>
+
+  <!-- API KEY MODAL -->
+  <div id="apiKeyModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
+    <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-slate-200 space-y-4">
+      <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+        <svg class="w-5 h-5 text-teal-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+        </svg>
+        Cấu hình API Key (Tùy chọn)
+      </h3>
+      <p class="text-xs text-slate-500">Nếu máy chủ VRE bật xác thực bảo mật, bạn cần điền mã API Key để gọi hệ thống.</p>
+      <div>
+        <label for="apiKeyInput" class="block text-xs font-semibold text-slate-700 mb-1">Mã VRE API Key</label>
+        <input id="apiKeyInput" type="password" placeholder="Nhập API Key nếu có..." class="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-slate-800 focus:bg-white focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition-all font-mono">
+      </div>
+      <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+        <button id="apiKeyCancel" type="button" class="text-xs font-semibold text-slate-500 hover:text-slate-700 px-3 py-2 rounded-lg">Đóng</button>
+        <button id="apiKeySave" type="button" class="text-xs font-semibold bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg shadow-sm">Lưu cấu hình</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SCRIPT LOGIC -->
+  <script>
+    const $ = id => document.getElementById(id);
+    let appConfig = null;
+    let currentResult = null;
+    let currentPreviewUrl = null;
+    let currentFilter = 'all';
+
+    // Label dictionaries - NO "Gemini" on UI
+    const DOC_LABELS = {
+      estimate_number: 'Số báo giá',
+      date: 'Ngày báo giá',
+      vehicle_plate: 'Biển số xe',
+      vehicle_model: 'Hiệu / Dòng xe',
+      vin: 'Số khung (VIN)'
+    };
+
+    const CAT_LABELS = {
+      material: { text: 'Phụ tùng', badge: 'bg-blue-50 text-blue-700 border-blue-200' },
+      labor: { text: 'Tiền công', badge: 'bg-purple-50 text-purple-700 border-purple-200' },
+      paint: { text: 'Sơn xe', badge: 'bg-rose-50 text-rose-700 border-rose-200' }
+    };
+
+    const METHOD_LABELS = {
+      exact: { text: 'Khớp chính xác', badge: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+      gemini: { text: 'AI đối chiếu', badge: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
+      unmatched: { text: 'Chưa khớp', badge: 'bg-amber-50 text-amber-700 border-amber-200' }
+    };
+
+    function formatModelDisplayName(rawModel) {
+      if (!rawModel) return 'AI Tiêu chuẩn';
+      // Mask any occurrence of "gemini" into "AI"
+      let name = rawModel.replace(/gemini[-_]?/gi, 'AI-');
+      if (rawModel.includes('flash')) name += ' (Tốc độ cao)';
+      if (rawModel.includes('pro')) name += ' (Chính xác cao)';
+      return name;
+    }
+
+    function getApiKey() {
+      return localStorage.getItem('vre_api_key') || '';
+    }
+
+    function getHeaders() {
+      const key = getApiKey();
+      return key ? { 'X-API-Key': key } : {};
+    }
+
+    async function apiRequest(url, options = {}) {
+      const res = await fetch(url, {
+        ...options,
+        headers: {
+          ...getHeaders(),
+          ...options.headers
+        }
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail?.message || JSON.stringify(data.detail || data));
+      }
+      return data;
+    }
+
+    async function initConfig() {
+      try {
+        appConfig = await apiRequest('/api/v1/repair-estimate/demo-config');
+        for (const selectId of ['ocr', 'mapping']) {
+          const select = $(selectId);
+          const prev = select.value;
+          select.replaceChildren();
+          for (const model of appConfig.models) {
+            const opt = document.createElement('option');
+            opt.value = model;
+            opt.textContent = formatModelDisplayName(model);
+            select.append(opt);
+          }
+          select.value = appConfig.models.includes(prev) ? prev : appConfig.default_model;
+        }
+      } catch (err) {
+        setJobStatus('error', 'Lỗi tải cấu hình: ' + err.message);
+      }
+    }
+
+    // Status management
+    function setJobStatus(type, msg, timeText = '') {
+      const card = $('statusCard');
+      const indicator = $('statusIndicator');
+      const title = $('statusTitle');
+      const time = $('statusTime');
+      const desc = $('statusMsg');
+
+      time.textContent = timeText || (type === 'running' ? 'Đang chạy...' : 'Cập nhật');
+      desc.textContent = msg;
+
+      if (type === 'running') {
+        indicator.className = 'mt-0.5 flex-none w-8 h-8 rounded-lg bg-teal-50 text-teal-600 flex items-center justify-center animate-spin';
+        indicator.innerHTML = `<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path></svg>`;
+        title.textContent = 'Đang xử lý dữ liệu';
+        title.className = 'text-sm font-semibold text-teal-900';
+      } else if (type === 'success') {
+        indicator.className = 'mt-0.5 flex-none w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center';
+        indicator.innerHTML = `<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>`;
+        title.textContent = 'Hoàn tất trích xuất & đối chiếu';
+        title.className = 'text-sm font-semibold text-emerald-900';
+      } else if (type === 'error') {
+        indicator.className = 'mt-0.5 flex-none w-8 h-8 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center';
+        indicator.innerHTML = `<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>`;
+        title.textContent = 'Xảy ra sự cố';
+        title.className = 'text-sm font-semibold text-rose-900';
+      } else {
+        indicator.className = 'mt-0.5 flex-none w-8 h-8 rounded-lg bg-slate-100 text-slate-400 flex items-center justify-center';
+        indicator.innerHTML = `<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>`;
+        title.textContent = 'Trạng thái hệ thống';
+        title.className = 'text-sm font-semibold text-slate-800';
+      }
+    }
+
+    // File selection & Large preview
+    $('file').addEventListener('change', () => {
+      const file = $('file').files[0];
+      if (!file) return;
+
+      $('fileName').textContent = file.name;
+      $('fileHint').textContent = `${(file.size / (1024 * 1024)).toFixed(2)} MB · Bấm để đổi file`;
+
+      if (['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+        if (currentPreviewUrl) URL.revokeObjectURL(currentPreviewUrl);
+        currentPreviewUrl = URL.createObjectURL(file);
+        
+        $('preview').src = currentPreviewUrl;
+        $('lightboxImg').src = currentPreviewUrl;
+        $('previewCard').classList.remove('hidden');
+
+        // Read natural image dimension
+        const img = new Image();
+        img.onload = () => {
+          $('previewResolution').textContent = `${img.naturalWidth} × ${img.naturalHeight} px`;
+        };
+        img.src = currentPreviewUrl;
+      } else {
+        $('previewCard').classList.add('hidden');
+      }
+    });
+
+    // Lightbox open / close
+    $('previewTrigger').addEventListener('click', () => {
+      if (currentPreviewUrl) {
+        $('lightbox').classList.remove('hidden');
+        $('lightbox').classList.add('flex');
+      }
+    });
+
+    function closeLightbox() {
+      $('lightbox').classList.add('hidden');
+      $('lightbox').classList.remove('flex');
+    }
+
+    $('lightboxClose').addEventListener('click', closeLightbox);
+    $('lightbox').addEventListener('click', e => {
+      if (e.target === $('lightbox')) closeLightbox();
+    });
+    window.addEventListener('keydown', e => {
+      if (e.key === 'Escape') closeLightbox();
+    });
+
+    // Render results
+    function renderResult(data) {
+      currentResult = data;
+      $('emptyState').classList.add('hidden');
+      $('resultContainer').classList.remove('hidden');
+      $('jsonPre').textContent = JSON.stringify(data, null, 2);
+
+      // 1. Render Document Metadata
+      const docGrid = $('docGrid');
+      docGrid.replaceChildren();
+      const doc = data.document || {};
+      for (const [key, label] of Object.entries(DOC_LABELS)) {
+        const val = doc[key];
+        const card = document.createElement('div');
+        card.className = 'bg-slate-50 border border-slate-200/80 rounded-xl p-2.5 flex flex-col justify-center';
+        card.innerHTML = `
+          <span class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">${label}</span>
+          <span class="text-xs font-bold text-slate-800 truncate mt-0.5" title="${val || 'Chưa nhận diện'}">${val || '—'}</span>
+        `;
+        docGrid.append(card);
+      }
+
+      // 2. Render KPIs & Metrics
+      const totalMetric = data.metrics?.total || {};
+      const ocrMetric = data.metrics?.ocr || {};
+      const mapMetric = data.metrics?.mapping || {};
+
+      $('metricTotalDuration').textContent = totalMetric.duration_seconds != null ? totalMetric.duration_seconds : '—';
+      if (totalMetric.cost?.total_usd != null) {
+        $('metricTotalCost').textContent = `Chi phí ước tính: $${Number(totalMetric.cost.total_usd).toFixed(4)} USD`;
+      } else {
+        $('metricTotalCost').textContent = ocrMetric.cache_hit ? 'Dùng cache · Tiết kiệm chi phí AI' : 'Chi phí tính toán AI tiêu chuẩn';
+      }
+
+      $('metricOcrDuration').textContent = ocrMetric.duration_seconds != null ? ocrMetric.duration_seconds : '—';
+      if (ocrMetric.cache_hit) {
+        $('ocrCacheBadge').classList.remove('hidden');
+        $('metricOcrDetail').textContent = 'Trúng Cache · Không phát sinh request AI';
+      } else {
+        $('ocrCacheBadge').classList.add('hidden');
+        $('metricOcrDetail').textContent = `Hoàn thành nhận diện bóc tách`;
+      }
+
+      $('metricMapDuration').textContent = mapMetric.duration_seconds != null ? mapMetric.duration_seconds : '—';
+      if (mapMetric.cache_hits > 0) {
+        $('mapCacheBadge').classList.remove('hidden');
+        $('mapCacheBadge').textContent = `${mapMetric.cache_hits} item từ cache`;
+      } else {
+        $('mapCacheBadge').classList.add('hidden');
+      }
+      $('metricMapDetail').textContent = `${mapMetric.item_count || 0} hạng mục · ${mapMetric.gemini_calls || 0} lượt gọi AI`;
+
+      // 3. Accuracy breakdown bar
+      const totalItems = mapMetric.item_count || (data.items || []).length || 1;
+      const exactCount = mapMetric.exact_count || 0;
+      const aiCount = mapMetric.gemini_count || 0;
+      const unmatchedCount = mapMetric.unmatched_count || 0;
+
+      const pExact = ((exactCount / totalItems) * 100).toFixed(0);
+      const pAi = ((aiCount / totalItems) * 100).toFixed(0);
+      const pUnmatched = ((unmatchedCount / totalItems) * 100).toFixed(0);
+
+      $('barExact').style.width = `${pExact}%`;
+      $('barAi').style.width = `${pAi}%`;
+      $('barUnmatched').style.width = `${pUnmatched}%`;
+
+      $('countExact').textContent = exactCount;
+      $('countAi').textContent = aiCount;
+      $('countUnmatched').textContent = unmatchedCount;
+      $('matchRatioText').textContent = `${((exactCount + aiCount) / totalItems * 100).toFixed(0)}% khớp mã`;
+
+      // 4. Render Table
+      renderTableRows(data.items || []);
+    }
+
+    function renderTableRows(items) {
+      const tbody = $('tableRows');
+      tbody.replaceChildren();
+
+      const search = ($('itemSearch').value || '').trim().toLowerCase();
+      $('tabCountAll').textContent = items.length;
+
+      let filtered = items.filter(it => {
+        if (currentFilter !== 'all' && it.category !== currentFilter) return false;
+        if (search) {
+          const raw = (it.raw_name || '').toLowerCase();
+          const matches = (it.mapping?.matches || []).map(m => `${m.name} ${m.code}`).join(' ').toLowerCase();
+          return raw.includes(search) || matches.includes(search);
+        }
+        return true;
+      });
+
+      if (!filtered.length) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td colspan="5" class="px-4 py-8 text-center text-slate-400">Không tìm thấy hạng mục phù hợp bộ lọc</td>`;
+        tbody.append(tr);
+        return;
+      }
+
+      filtered.forEach((item, index) => {
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-slate-50/80 transition-colors';
+
+        // Category config
+        const catCfg = CAT_LABELS[item.category] || { text: item.category, badge: 'bg-slate-50 text-slate-600' };
+        
+        // Method config
+        const methodKey = item.mapping?.method || 'unmatched';
+        const methodCfg = METHOD_LABELS[methodKey] || { text: methodKey, badge: 'bg-slate-50 text-slate-600' };
+
+        // Matches presentation
+        const matches = item.mapping?.matches || [];
+        let matchHtml = '';
+        if (matches.length > 0) {
+          matchHtml = matches.map(m => `
+            <div class="inline-flex items-center gap-1.5 bg-teal-50/60 border border-teal-200/70 rounded-md px-2 py-0.5 mr-1 mb-1">
+              <span class="font-medium text-slate-800">${m.name}</span>
+              <span class="font-mono text-[11px] font-bold text-teal-700 bg-white px-1.5 py-0.2 rounded border border-teal-200/50">${m.code}</span>
+            </div>
+          `).join('');
+        } else {
+          matchHtml = `<span class="text-slate-400 italic">Chưa khớp mã trong codebook</span>`;
+        }
+
+        tr.innerHTML = `
+          <td class="px-4 py-3 text-center font-mono text-slate-400">${index + 1}</td>
+          <td class="px-4 py-3 font-semibold text-slate-800">${item.raw_name || '—'}</td>
+          <td class="px-4 py-3">
+            <span class="inline-block text-[11px] font-semibold px-2 py-0.5 rounded-full border ${catCfg.badge}">${catCfg.text}</span>
+          </td>
+          <td class="px-4 py-3">${matchHtml}</td>
+          <td class="px-4 py-3">
+            <span class="inline-block text-[11px] font-semibold px-2 py-0.5 rounded-full border ${methodCfg.badge}">${methodCfg.text}</span>
+          </td>
+        `;
+        tbody.append(tr);
+      });
+    }
+
+    // Filter tabs
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab-btn').forEach(b => {
+          b.classList.remove('bg-white', 'shadow-sm', 'text-slate-900', 'font-semibold');
+          b.classList.add('hover:text-slate-900');
+        });
+        btn.classList.add('bg-white', 'shadow-sm', 'text-slate-900', 'font-semibold');
+        btn.classList.remove('hover:text-slate-900');
+        currentFilter = btn.dataset.filter;
+        if (currentResult) renderTableRows(currentResult.items || []);
+      });
+    });
+
+    $('itemSearch').addEventListener('input', () => {
+      if (currentResult) renderTableRows(currentResult.items || []);
+    });
+
+    // Form submit & polling execution
+    $('form').addEventListener('submit', async e => {
+      e.preventDefault();
+      const file = $('file').files[0];
+      if (!file) return;
+
+      $('submit').disabled = true;
+      $('submitIcon').classList.add('hidden');
+      $('submitSpinner').classList.remove('hidden');
+      $('submitText').textContent = 'Đang gửi tài liệu...';
+
+      setJobStatus('running', 'Đang tải file lên máy chủ...');
+
+      try {
+        await initConfig();
+        if (appConfig?.max_upload_bytes && file.size > appConfig.max_upload_bytes) {
+          throw new Error(`Kích thước file vượt quá ${Math.round(appConfig.max_upload_bytes / (1024 * 1024))} MB`);
+        }
+
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('options', JSON.stringify({
+          ocr_model: $('ocr').value,
+          mapping_model: $('mapping').value,
+          use_cache: true,
+          save_mongodb: true,
+          timeout_seconds: Number($('timeout').value)
+        }));
+
+        const job = await apiRequest('/api/v1/repair-estimate/jobs', {
+          method: 'POST',
+          body: formData
+        });
+
+        const startTime = Date.now();
+        $('submitText').textContent = 'AI đang phân tích...';
+
+        // Polling loop
+        while (true) {
+          const state = await apiRequest(job.status_url);
+          const elapsedSec = Math.round((Date.now() - startTime) / 1000);
+
+          let stepDesc = 'Đang phân tích OCR & đối chiếu danh mục phụ tùng...';
+          if (state.step === 'storage') stepDesc = 'Đang lưu trữ dữ liệu vào hệ thống...';
+          else if (state.step === 'queued') stepDesc = 'Đang xếp hàng chờ worker xử lý...';
+
+          setJobStatus('running', `${stepDesc}\nMã tác vụ: ${job.job_id}`, `${elapsedSec}s`);
+
+          if (state.status === 'failed') {
+            throw new Error(state.error?.message || 'Quá trình phân tích thất bại');
+          }
+
+          if (state.status === 'success') {
+            const finalResult = await apiRequest(job.result_url);
+            renderResult(finalResult);
+            setJobStatus('success', `Hoàn tất xử lý sau ${elapsedSec} giây.\nMã tác vụ: ${job.job_id}`, `${elapsedSec}s`);
+            break;
+          }
+
+          await new Promise(r => setTimeout(r, 1200));
+        }
+
+      } catch (err) {
+        setJobStatus('error', 'Lỗi: ' + err.message);
+      } finally {
+        $('submit').disabled = false;
+        $('submitIcon').classList.remove('hidden');
+        $('submitSpinner').classList.add('hidden');
+        $('submitText').textContent = 'Bắt đầu phân tích báo giá';
+      }
+    });
+
+    // Toggle JSON
+    $('toggleJsonBtn').addEventListener('click', () => {
+      const block = $('rawJsonBlock');
+      const isHidden = block.classList.contains('hidden');
+      block.classList.toggle('hidden');
+      $('toggleJsonBtn').textContent = isHidden ? 'Ẩn dữ liệu thô (JSON) ▲' : 'Xem dữ liệu thô (JSON) ▼';
+    });
+
+    // Download JSON
+    $('downloadBtn').addEventListener('click', () => {
+      if (!currentResult) return;
+      const blob = new Blob([JSON.stringify(currentResult, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `vre-estimate-${currentResult.job_id || 'result'}.json`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    });
+
+    // API Key modal controls
+    $('apiKeyBtn').addEventListener('click', () => {
+      $('apiKeyInput').value = getApiKey();
+      $('apiKeyModal').classList.remove('hidden');
+      $('apiKeyModal').classList.add('flex');
+    });
+
+    $('apiKeyCancel').addEventListener('click', () => {
+      $('apiKeyModal').classList.add('hidden');
+      $('apiKeyModal').classList.remove('flex');
+    });
+
+    $('apiKeySave').addEventListener('click', () => {
+      const val = $('apiKeyInput').value.trim();
+      if (val) localStorage.setItem('vre_api_key', val);
+      else localStorage.removeItem('vre_api_key');
+      $('apiKeyModal').classList.add('hidden');
+      $('apiKeyModal').classList.remove('flex');
+      $('apiKeyStatus').textContent = val ? 'Đã lưu Key' : 'API Key';
+      initConfig();
+    });
+
+    if (getApiKey()) $('apiKeyStatus').textContent = 'Đã lưu Key';
+    initConfig();
+  </script>
+</body>
+</html>
