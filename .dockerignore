@@ -18,6 +18,7 @@ tests/
 *.jpeg
 *.png
 !src/repair_estimate_api/static/aic.png
+!src/repair_estimate_api/static/logo.png
 *.webp
 *.heic
 *.heif
