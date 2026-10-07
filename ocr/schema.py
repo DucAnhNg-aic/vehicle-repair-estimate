@@ -7,7 +7,7 @@ nằm trong prompt.py.
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 def _amount(cat: str) -> str:
@@ -25,7 +25,7 @@ class StrictModel(BaseModel):
 
 
 class Document(StrictModel):
-    quotation_number: str | None = Field(
+    estimate_number: str | None = Field(
         description="Số báo giá/số phiếu đúng nguyên văn trong tài liệu. Null nếu không có.")
     date: str | None = Field(
         description="Ngày (và giờ nếu có) của báo giá, giữ nguyên văn như trong tài liệu, "
@@ -37,8 +37,17 @@ class Document(StrictModel):
     vin: str | None = Field(
         description="Số khung (VIN) đúng nguyên văn trong tài liệu. Null nếu không có.")
 
+    @model_validator(mode="before")
+    @classmethod
+    def accept_legacy_quotation_number(cls, data):
+        """Read artifacts created before the Vehicle Repair Estimate rename."""
+        if isinstance(data, dict) and "quotation_number" in data and "estimate_number" not in data:
+            data = dict(data)
+            data["estimate_number"] = data.pop("quotation_number")
+        return data
 
-class QuotationItem(StrictModel):
+
+class RepairEstimateItem(StrictModel):
     raw_section: str | None = Field(
         description='Tên section đúng nguyên văn trong tài liệu, ví dụ: "Phần công dịch vụ", '
                     '"Công S/C Sơn", "Phụ tùng / vật tư", "Phần phụ tùng/dầu mỡ/vật tư".')
@@ -104,6 +113,6 @@ class QuotationItem(StrictModel):
                     "(ví dụ tên hạng mục như in trên tài liệu).")
 
 
-class Quotation(StrictModel):
+class RepairEstimate(StrictModel):
     document: Document = Field(description="Thông tin chung của báo giá (không phải dòng hạng mục).")
-    items: list[QuotationItem] = Field(description="Tất cả các dòng hạng mục hợp lệ trong báo giá.")
+    items: list[RepairEstimateItem] = Field(description="Tất cả các dòng hạng mục hợp lệ trong báo giá.")

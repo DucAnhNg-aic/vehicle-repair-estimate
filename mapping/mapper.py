@@ -9,7 +9,7 @@ from pathlib import Path
 from openpyxl import load_workbook
 
 from cost import cost_from_response, estimate_cost, sum_costs
-from llm_cache import mapping_context, mapping_key
+from llm_cache import mapping_context, mapping_item_payload, mapping_key
 from ocr.schema import RepairEstimate, RepairEstimateItem
 from .prompt import INSTRUCTIONS
 from .schema import BatchSelection, CodebookRow, ItemSelection, MappingResult
@@ -91,7 +91,8 @@ class GeminiMatcher:
         audit = {"items": [item.raw_name for item in items], "categories": sorted({item.category for item in items}),
                  "prompt": kind, "model": self.model, "status": "failed"}
         try:
-            payload = {"items": [dict(item.model_dump(mode="json"), index=i) for i, item in enumerate(items)],
+            payload = {"items": [dict(mapping_item_payload(item.model_dump(mode="json")), index=i)
+                                 for i, item in enumerate(items)],
                        "names": names}
             response = self.client.interactions.create(
                 model=self.model, system_instruction=self.INSTRUCTIONS[kind],

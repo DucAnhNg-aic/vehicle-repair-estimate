@@ -1,4 +1,4 @@
-"""Run one quotation extraction using Gemini's Interactions API: python -m ocr [file]."""
+"""Extract one Vehicle Repair Estimate with Gemini: python -m ocr [file]."""
 
 from __future__ import annotations
 
@@ -13,13 +13,13 @@ from google.genai import types
 
 from .extractor import (
     IMG_DIR, INLINE_LIMIT, OUTPUT_DIR, PROJECT_ROOT, ROOT, SUPPORTED,
-    extract_document, load_env, load_prompt,
+    extract_repair_estimate, load_env, load_prompt,
 )
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("file", nargs="?", type=Path, help="Ảnh/PDF/Markdown; mặc định dùng ảnh mẫu trong BGSC.")
+    parser.add_argument("file", nargs="?", type=Path, help="Ảnh/PDF/Markdown; mặc định dùng ảnh mẫu trong VRE.")
     parser.add_argument("--env-file", type=Path, default=PROJECT_ROOT / ".env")
     parser.add_argument("--prompt", type=Path, default=ROOT / "prompt.py",
                         help="File .py khai báo PROMPT hoặc file text UTF-8; mặc định prompt.py.")
@@ -68,8 +68,8 @@ def main() -> int:
     if args.dry_run:
         return 0
 
-    extract_document(file_path, model=model, api_key=api_key, prompt_path=args.prompt,
-                     output_dir=args.output_dir, timeout=args.timeout)
+    extract_repair_estimate(file_path, model=model, api_key=api_key, prompt_path=args.prompt,
+                            output_dir=args.output_dir, timeout=args.timeout)
     return 0
 
 

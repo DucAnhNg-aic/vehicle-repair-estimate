@@ -62,8 +62,12 @@ def mapping_context(*, model: str, instructions: str, names: Iterable[str]) -> s
     return _sha256(_canonical(payload))
 
 
+def mapping_item_payload(item_fields: dict) -> dict:
+    """Chỉ giữ các trường mà quyết định mapping phụ thuộc vào."""
+    return {name: item_fields.get(name) for name in MAPPING_ITEM_FIELDS}
+
+
 def mapping_key(context: str, item_fields: dict) -> str:
     """Khóa cache mapping cho một item trong ngữ cảnh ``context``."""
-    item = {name: _normalize(item_fields.get(name)) for name in MAPPING_ITEM_FIELDS}
+    item = {name: _normalize(value) for name, value in mapping_item_payload(item_fields).items()}
     return "mapping:" + _sha256(_canonical({"context": context, "item": item}))
-

@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 from openpyxl import Workbook
-from ocr import Quotation, QuotationItem, extract_document
+from ocr import RepairEstimate, RepairEstimateItem, extract_repair_estimate
 from ocr.schema import Document
 from mapping import CodebookMapper, GeminiMatcher
 
@@ -21,10 +21,10 @@ def response(payload, status="completed"):
 class PipelineTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        item = {name: None for name in QuotationItem.model_fields}
+        item = {name: None for name in RepairEstimateItem.model_fields}
         item.update(raw_name="Sơn cản", section_type="service", item_name="cản",
                     category="paint", source_evidence="Sơn cản")
-        cls.quotation = Quotation.model_validate({
+        cls.estimate = RepairEstimate.model_validate({
             "document": {name: None for name in Document.model_fields}, "items": [item]})
 
     def setUp(self):
@@ -40,7 +40,7 @@ class PipelineTests(unittest.TestCase):
             w.save(self.root / f"{prefix}_codebook.xlsx")
 
     def item(self, name, category):
-        return self.quotation.items[0].model_copy(update={"raw_name": name, "category": category})
+        return self.estimate.items[0].model_copy(update={"raw_name": name, "category": category})
 
     def test_exact_duplicates_and_routing_without_fallback(self):
         matcher = Mock()
@@ -138,11 +138,11 @@ class PipelineTests(unittest.TestCase):
 
     def test_ocr_api_preserves_artifacts_and_client(self):
         client = Mock()
-        client.interactions.create.return_value = response(self.quotation.model_dump(mode="json"))
+        client.interactions.create.return_value = response(self.estimate.model_dump(mode="json"))
         source = self.root / "input.md"
-        source.write_text("Quotation")
-        result = extract_document(source, model="test", client=client, output_dir=self.root / "ocr")
-        self.assertEqual(result, self.quotation)
+        source.write_text("Vehicle Repair Estimate")
+        result = extract_repair_estimate(source, model="test", client=client, output_dir=self.root / "ocr")
+        self.assertEqual(result, self.estimate)
         client.close.assert_not_called()
         self.assertEqual(len(list((self.root / "ocr").rglob("result.json"))), 1)
 
@@ -150,12 +150,20 @@ class PipelineTests(unittest.TestCase):
         client = Mock()
         client.interactions.create.return_value = response({"invalid": True})
         source = self.root / "input.md"
-        source.write_text("Quotation")
+        source.write_text("Vehicle Repair Estimate")
         with self.assertRaises(ValueError):
-            extract_document(source, model="test", client=client, output_dir=self.root / "ocr")
+            extract_repair_estimate(source, model="test", client=client, output_dir=self.root / "ocr")
         metadata = json.loads(next((self.root / "ocr").rglob("metadata.json")).read_text())
         self.assertEqual(metadata["status"], "failed")
         self.assertTrue(list((self.root / "ocr").rglob("response.json")))
+
+    def test_legacy_estimate_number_is_read_and_written_with_new_name(self):
+        payload = self.estimate.model_dump(mode="json")
+        payload["document"]["quotation_number"] = payload["document"].pop("estimate_number")
+        parsed = RepairEstimate.model_validate(payload)
+        document = parsed.model_dump(mode="json")["document"]
+        self.assertIn("estimate_number", document)
+        self.assertNotIn("quotation_number", document)
 
 
 if __name__ == "__main__":

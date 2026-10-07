@@ -1,5 +1,5 @@
-"""Quotation OCR contracts and extraction API."""
-from .schema import Quotation, QuotationItem
-from .extractor import extract_document
+"""Vehicle Repair Estimate OCR contracts and extraction API."""
+from .schema import RepairEstimate, RepairEstimateItem
+from .extractor import extract_repair_estimate
 
-__all__ = ["Quotation", "QuotationItem", "extract_document"]
+__all__ = ["RepairEstimate", "RepairEstimateItem", "extract_repair_estimate"]

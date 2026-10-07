@@ -16,3 +16,4 @@ img/
 *.csv
 *.xlsx
 *.xls
+!aic.png

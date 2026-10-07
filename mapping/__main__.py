@@ -8,7 +8,7 @@ from google import genai
 from google.genai import types
 
 from ocr.extractor import PROJECT_ROOT, load_env, write_json
-from ocr.schema import Quotation
+from ocr.schema import RepairEstimate
 from .mapper import CODEBOOK_DIR, CodebookMapper, GeminiMatcher
 
 
@@ -24,7 +24,7 @@ def main():
     args = parser.parse_args()
     if args.timeout <= 0:
         parser.error("--timeout phải lớn hơn 0")
-    quotation = Quotation.model_validate_json(args.result.read_text(encoding="utf-8"))
+    estimate = RepairEstimate.model_validate_json(args.result.read_text(encoding="utf-8"))
     load_env(args.env_file)
     model = args.model or os.getenv("GEMINI_MODEL") or "gemini-3.6-flash"
     if not args.exact_only and not os.getenv("GEMINI_API_KEY"):
@@ -36,10 +36,10 @@ def main():
         mapper = CodebookMapper(matcher=matcher, codebook_dir=args.codebook_dir)
         args.output.parent.mkdir(parents=True, exist_ok=True)
         try:
-            results = mapper.map_quotation(quotation)
-            write_json(args.output, {"document": quotation.document.model_dump(mode="json"),
+            results = mapper.map_repair_estimate(estimate)
+            write_json(args.output, {"document": estimate.document.model_dump(mode="json"),
                                     "items": [dict(item.model_dump(mode="json"), mapping=result.model_dump(mode="json"))
-                                              for item, result in zip(quotation.items, results)]})
+                                              for item, result in zip(estimate.items, results)]})
         finally:
             write_json(args.output.with_suffix(".calls.json"), matcher.calls if matcher else [])
     print(f"Đã map {len(results)} dòng: {args.output}")

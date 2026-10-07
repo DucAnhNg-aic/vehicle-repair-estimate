@@ -45,7 +45,7 @@ Chỉ phân loại một lần mỗi tên; tên trùng khác mã nhận cùng nh
 
 ## Chạy
 
-Từ thư mục BGSC:
+Từ thư mục `vehicle-repair-estimate`:
 
 ```bash
 conda activate da_gemini

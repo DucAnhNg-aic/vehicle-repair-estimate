@@ -189,6 +189,11 @@ class GeminiMatcherCacheTests(unittest.TestCase):
         sent = json.loads(self.client.interactions.create.call_args.kwargs["input"])
         self.assertEqual([i["raw_name"] for i in sent["items"]], ["b"])
         self.assertEqual(sent["items"][0]["index"], 0)
+        self.assertEqual(set(sent["items"][0]), {
+            "index", "raw_section", "section_type", "raw_name", "operation",
+            "vehicle_part", "item_name", "category",
+        })
+        self.assertNotIn("source_evidence", sent["items"][0])
 
     def test_duplicates_in_one_batch_are_sent_once(self):
         self.reply("Sơn cản")
@@ -319,4 +324,3 @@ class PipelineCacheTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

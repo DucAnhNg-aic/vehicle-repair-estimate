@@ -1,10 +1,12 @@
-# Đọc báo giá sửa chữa bằng Gemini
+# Vehicle Repair Estimate (VRE)
+
+Trích xuất và đối chiếu báo giá sửa chữa xe bằng Gemini.
 
 Chạy với Python 3.11 trong conda `da_gemini`:
 
 ```bash
 conda activate da_gemini
-cd /home/ubuntu/ducanh/BGSC
+cd /home/ubuntu/ducanh/vehicle-repair-estimate
 python -m pip install -r requirements.txt
 python -m ocr
 ```
@@ -63,12 +65,12 @@ Model chưa có bảng giá hoặc response thiếu usage sẽ có `total_usd: n
 ## Luồng chính: OCR → mapping (một lệnh)
 
 ```bash
-python -m pipeline 'img/bao_gia.jpg'                 # OCR + mapping (exact + Gemini fallback)
-python -m pipeline 'img/bao_gia.jpg' --exact-only    # mapping không gọi Gemini
-python -m pipeline 'img/bao_gia.jpg' --mapping-model gemini-3.6-flash
+python -m repair_estimate_pipeline 'img/bao_gia.jpg'                 # OCR + mapping
+python -m repair_estimate_pipeline 'img/bao_gia.jpg' --exact-only    # mapping không gọi Gemini
+python -m repair_estimate_pipeline 'img/bao_gia.jpg' --mapping-model gemini-3.6-flash
 ```
 
-Mỗi lần chạy tạo `outputs/pipeline/<timestamp>/`:
+Mỗi lần chạy tạo `outputs/repair_estimate_pipeline/<timestamp>/`:
 
 | File | Nội dung |
 |---|---|
@@ -79,7 +81,8 @@ Mỗi lần chạy tạo `outputs/pipeline/<timestamp>/`:
 | `mapping.calls.json` | từng lời gọi Gemini fallback: response, usage, cost, latency |
 
 `summary.json` luôn được ghi kể cả khi một bước lỗi (bước sau ghi `skipped`,
-token đã tốn vẫn được tính). Gọi từ Python: `from pipeline import run_pipeline`.
+token đã tốn vẫn được tính). Gọi từ Python:
+`from repair_estimate_pipeline import run_repair_estimate_pipeline`.
 
 ## Chi phí Gemini (`cost/`)
 
@@ -117,20 +120,20 @@ Tham khảo chính thức:
 
 ## OCR và mapping độc lập / tích hợp
 
-OCR trả `Quotation` đã validate; lỗi API/schema được raise cho luồng gọi xử lý.
+OCR trả `RepairEstimate` đã validate; lỗi API/schema được raise cho luồng gọi xử lý.
 API không tự load `.env`; CLI vẫn load `.env`. Client truyền vào do caller quản lý.
 
 ```python
 from google import genai
-from ocr import extract_document
+from ocr import extract_repair_estimate
 from mapping import CodebookMapper, GeminiMatcher
 
 with genai.Client() as client:  # GEMINI_API_KEY từ environment
-    quotation = extract_document("img/bao_gia.jpg", model="your-model", client=client)
+    estimate = extract_repair_estimate("img/bao_gia.jpg", model="your-model", client=client)
     mapper = CodebookMapper(matcher=GeminiMatcher(client, "your-model"))
-    mappings = mapper.map_quotation(quotation)
-    # Hoặc mapper.map_item(quotation.items[0])
-    for item, mapped in zip(quotation.items, mappings):
+    mappings = mapper.map_repair_estimate(estimate)
+    # Hoặc mapper.map_item(estimate.items[0])
+    for item, mapped in zip(estimate.items, mappings):
         print(item.raw_name, [row.code for row in mapped.matches])
 ```
 
@@ -159,3 +162,83 @@ CLI mapping giữ các trường OCR và thêm `mapping` vào mỗi item, theo �
 File `.calls.json` bên cạnh output lưu response/usage và latency từng lời gọi
 Gemini, kể cả khi mapping thất bại. Chạy lại cùng `--output` sẽ ghi đè file đó.
 `CodebookMapper()` không truyền matcher chỉ chạy exact, phù hợp test offline.
+
+## Lưu và xem kết quả bằng MongoDB
+
+Chạy pipeline và tự động lưu DB: `./run_repair_estimate_pipeline.sh img/ --save-mongodb`.
+Option này dùng được với cả file và folder. Pipeline kiểm tra DB trước khi gọi
+Gemini. Nếu ghi DB thất bại sau xử lý, JSON vẫn còn để import lại bằng lệnh bên dưới.
+
+```bash
+docker compose up -d
+python -m storage ping
+python -m storage import outputs/repair_estimate_pipeline/<run_id>
+python -m storage show --limit 5
+python -m storage show --vehicle-plate 30F60314 --full
+```
+
+Mongo Express chạy local tại `http://127.0.0.1:8082`, đăng nhập bằng
+`MONGO_USERNAME` / `MONGO_PASSWORD` trong `.env`. UI chỉ bind vào loopback và dùng cho môi trường phát triển.
+Trong UI, mở database `vehicle_repair_estimate`, rồi collection
+`repair_estimates` để xem và lọc các kết quả đã import.
+
+Module đọc `MONGO_URI`, `MONGO_DATABASE`, `MONGO_COLLECTION` từ `.env`.
+`import` dùng `run_id` để upsert nên chạy lại cùng một run không tạo bản ghi trùng.
+Mặc định `show` chỉ in thông tin tổng quan; thêm `--full` để xem toàn bộ items.
+
+## FastAPI và Redis worker
+
+UI demo nằm tại `/demo` trên cùng địa chỉ API (ví dụ `http://192.168.80.24:8000/demo`).
+Chọn file, thiết lập options và bấm xử lý; UI tự theo dõi job và hiển thị kết quả,
+thời gian/chi phí OCR và mapping, cùng nút tải JSON. UI được đóng trong image API.
+
+API nhận file theo `multipart/form-data`, đưa job vào Redis rồi worker chạy OCR → mapping
+và mặc định lưu kết quả vào MongoDB. Chạy toàn bộ stack bằng Docker Compose:
+
+```bash
+docker compose up -d --build api worker
+docker compose ps
+```
+
+API bind tại `127.0.0.1:8000`. Hai service dùng chung volume upload để worker đọc
+được file API nhận, và volume output để giữ artifacts qua các lần recreate container.
+Khi cần chạy ngoài Docker, vẫn có thể mở hai terminal với
+`python -m repair_estimate_api` và `python -m repair_estimate_api.worker`.
+
+Gửi một job:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/repair-estimate/jobs \
+  -H "X-API-Key: $VRE_API_KEY" \
+  -F 'file=@img/TAILIEUTHIETHAIXE51K85618.jpg' \
+  -F 'options={"use_cache":true,"save_mongodb":true}'
+```
+
+Response `202` có `job_id`, `status_url` và `result_url`. Dùng hai URL đó để xem
+trạng thái hoặc lấy kết quả hoàn chỉnh. Swagger UI ở `http://127.0.0.1:8000/docs`.
+
+Kết quả API và document MongoDB dùng chung `metrics.total`, `metrics.ocr`,
+`metrics.mapping`; mỗi phần có `duration_seconds` và `cost` (token usage, chi phí USD).
+`total` đo OCR + mapping, không bao gồm upload HTTP, chờ queue và ghi MongoDB.
+OCR cache hit có `cost: null` vì không gọi Gemini. Các document đã lưu theo
+`mapping_metrics` và kết quả job Redis cũ không tự chuyển sang cấu trúc mới.
+
+API luôn chạy OCR rồi mapping (exact match + Gemini/cache fallback).
+Các option public: `ocr_model`, `mapping_model`, `use_cache`,
+`save_mongodb`, `timeout_seconds` (10–600). Model phải nằm trong
+`VRE_API_ALLOWED_MODELS` (danh sách cách nhau bởi dấu phẩy, mặc định chỉ có
+`GEMINI_MODEL`). Secret, URI, output/codebook/prompt path chỉ lấy từ server.
+
+Biến cấu hình server tùy chọn:
+
+```text
+VRE_API_KEY=
+VRE_API_ALLOWED_MODELS=gemini-3.8-flash
+VRE_API_HOST=127.0.0.1
+VRE_API_PORT=8000
+VRE_API_QUEUE=repair-estimate
+VRE_API_UPLOAD_DIR=/tmp/vre-api/uploads
+VRE_API_MAX_UPLOAD_BYTES=26214400
+VRE_API_RESULT_TTL_SECONDS=604800
+VRE_API_JOB_TIMEOUT_SECONDS=2100
+```

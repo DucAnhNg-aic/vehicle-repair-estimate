@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>VRE · Demo báo giá sửa chữa</title>
+<style>
+:root{--navy:#0f2e44;--navy-2:#16425f;--teal:#0a8f84;--teal-d:#067069;--teal-l:#e3f5f2;--bg:#f2f5f9;--card:#fff;--line:#e1e8ef;--text:#15293a;--muted:#667b8c;--amber:#b45309;--amber-l:#fef3c7;--blue:#1d4ed8;--blue-l:#e0eaff;--red:#b42318;--red-l:#fee4e2;--green:#067647;--green-l:#dcfae6;--violet:#6d28d9;--violet-l:#ede9fe}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--text);background:var(--bg)}
+header{background:linear-gradient(120deg,var(--navy),var(--navy-2));color:#fff}
+.bar{max-width:1240px;margin:0 auto;padding:18px 24px;display:flex;align-items:center;gap:18px}
+.logo{width:92px;height:48px;object-fit:contain;background:#fff;border-radius:10px;padding:6px;flex:none}
+.bar small{display:block;color:#8fe0d6;letter-spacing:.14em;font-size:12px;font-weight:600}
+.bar h1{margin:2px 0 0;font-size:22px;font-weight:650;letter-spacing:-.01em}
+.bar p{margin:2px 0 0;color:#bcd0de;font-size:13.5px}
+main{max-width:1240px;margin:24px auto 48px;padding:0 24px;display:grid;grid-template-columns:360px minmax(0,1fr);gap:20px;align-items:start}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px;box-shadow:0 1px 2px #0f2e4408,0 8px 24px -12px #0f2e4422}
+.side{position:sticky;top:16px}
+h2{margin:0 0 16px;font-size:16px;font-weight:650;display:flex;align-items:center;gap:8px}
+h2 .step{width:22px;height:22px;border-radius:50%;background:var(--teal-l);color:var(--teal-d);font-size:12px;display:grid;place-items:center;font-weight:700}
+label.field{display:block;font-size:12.5px;font-weight:600;color:var(--muted);margin:16px 0 6px}
+input,select,button{font:inherit;color:inherit}
+select,input[type=number]{width:100%;padding:10px 12px;border:1px solid #cfdae4;border-radius:10px;background:#fff;transition:border-color .15s,box-shadow .15s}
+select:focus,input[type=number]:focus{outline:0;border-color:var(--teal);box-shadow:0 0 0 3px #0a8f8426}
+.drop{position:relative;border:2px dashed #b9c9d6;border-radius:14px;background:#f8fafc;padding:22px 16px;text-align:center;transition:.15s;cursor:pointer}
+.drop:hover,.drop.over{border-color:var(--teal);background:var(--teal-l)}
+.drop input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
+.drop .ico{font-size:26px;line-height:1}
+.drop strong{display:block;margin-top:6px;font-size:14px;overflow-wrap:anywhere}
+.drop span{display:block;color:var(--muted);font-size:12.5px;margin-top:2px}
+.drop.has{border-style:solid;border-color:var(--teal);background:var(--teal-l)}
+#preview{display:none;max-width:100%;max-height:200px;border-radius:10px;margin:14px auto 0;border:1px solid var(--line)}
+button{border:0;border-radius:10px;padding:12px 18px;font-weight:600;cursor:pointer;transition:background .15s,transform .05s}
+button:active{transform:translateY(1px)}
+#submit{width:100%;margin-top:20px;background:var(--teal);color:#fff}
+#submit:hover{background:var(--teal-d)}
+button:disabled{opacity:.55;cursor:wait}
+.hint{color:var(--muted);font-size:12.5px;margin:12px 0 0}
+#status{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border-radius:12px;background:#eef3f8;color:var(--text);font-size:14px;white-space:pre-wrap;overflow-wrap:anywhere;margin-bottom:18px}
+#status::before{content:"";flex:none;width:10px;height:10px;border-radius:50%;background:#9db1c1;margin-top:6px}
+#status[data-state=busy]{background:var(--blue-l);color:#173a8f}
+#status[data-state=busy]::before{background:none;border:2px solid #9db8f5;border-top-color:var(--blue);width:14px;height:14px;margin-top:3px;animation:spin .8s linear infinite}
+#status[data-state=ok]{background:var(--green-l);color:var(--green)}
+#status[data-state=ok]::before{background:var(--green)}
+#status[data-state=err]{background:var(--red-l);color:var(--red)}
+#status[data-state=err]::before{background:var(--red)}
+@keyframes spin{to{transform:rotate(360deg)}}
+#result{display:none}
+#document{margin:0 0 16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:16px}
+#document .kv{background:#f6f9fb;border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+#document dt{color:var(--muted);font-size:12px;margin:0}
+#document dd{margin:2px 0 0;font-weight:600;overflow-wrap:anywhere}
+.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:0 0 20px}
+.stat{border:1px solid var(--line);border-radius:12px;padding:14px;background:linear-gradient(180deg,#fff,#f6f9fb)}
+.stat .lbl{display:flex;justify-content:space-between;align-items:center;color:var(--muted);font-size:12.5px;font-weight:600}
+.stat strong{display:block;font-size:26px;letter-spacing:-.02em;margin:4px 0 2px}
+.stat .sub{color:var(--muted);font-size:12.5px;line-height:1.5}
+.table-wrap{overflow:auto;border:1px solid var(--line);border-radius:12px}
+table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:640px}
+th{position:sticky;top:0;text-align:left;color:var(--muted);background:#f6f9fb;font-size:12px;font-weight:650;text-transform:uppercase;letter-spacing:.04em}
+td,th{padding:11px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+tbody tr:last-child td{border-bottom:0}
+tbody tr:hover{background:#fafcfd}
+td.num{color:var(--muted);width:40px}
+.badge{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}
+.b-material{background:var(--blue-l);color:var(--blue)}.b-labor{background:var(--violet-l);color:var(--violet)}.b-paint{background:var(--amber-l);color:var(--amber)}
+.m-exact{background:var(--green-l);color:var(--green)}.m-gemini{background:var(--violet-l);color:var(--violet)}.m-unmatched{background:var(--amber-l);color:var(--amber)}
+.chip{display:block;margin-bottom:4px}
+.chip b{font-weight:600}
+.chip code{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--teal-l);color:var(--teal-d);padding:1px 6px;border-radius:6px;margin-left:6px}
+.none{color:var(--muted)}
+.actions{display:flex;gap:10px;margin-top:16px}
+#download{background:var(--navy);color:#fff}
+#download:hover{background:var(--navy-2)}
+details{margin-top:16px}
+summary{cursor:pointer;color:var(--muted);font-size:13.5px;font-weight:600}
+pre{font:12px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;background:#0f2e44;color:#d6e6f2;padding:14px;border-radius:12px;overflow:auto;max-height:380px}
+.empty{text-align:center;color:var(--muted);padding:34px 10px 18px}
+.empty .ico{font-size:34px}
+@media(max-width:900px){main{grid-template-columns:1fr}.side{position:static}.stats{grid-template-columns:1fr}.bar{padding:16px}}
+</style>
+</head>
+<body>
+<header><div class="bar">
+<img class="logo" src="/demo/logo.png" alt="AICycle" onerror="this.style.display='none'">
+<div><small>VEHICLE REPAIR ESTIMATE</small><h1>Đọc &amp; đối chiếu báo giá</h1><p>Upload tài liệu, xem kết quả OCR và mã codebook trong cùng một màn hình.</p></div>
+</div></header>
+<main>
+<section class="card side"><h2><span class="step">1</span>Tài liệu đầu vào</h2>
+<form id="form">
+<div class="drop" id="drop"><input id="file" type="file" accept=".jpg,.jpeg,.png,.webp,.heic,.heif,.pdf,.md,.markdown" required aria-label="Ảnh / PDF / Markdown">
+<div class="ico">📄</div><strong id="fileName">Chọn hoặc kéo thả tài liệu</strong><span id="fileHint">Ảnh · PDF · Markdown</span></div>
+<img id="preview" alt="Ảnh báo giá đã chọn">
+<label class="field" for="ocr">Model OCR</label><select id="ocr"></select>
+<label class="field" for="mapping">Model mapping</label><select id="mapping"></select>
+<label class="field" for="timeout">Timeout mỗi request (giây)</label><input id="timeout" type="number" min="10" max="600" value="180" required>
+<button id="submit" type="submit">Xử lý báo giá</button>
+<p class="hint">Luôn chạy OCR → mapping. Kết quả tự xuất hiện khi xử lý hoàn tất.</p>
+</form></section>
+<section class="card"><h2><span class="step">2</span>Kết quả xử lý</h2>
+<div id="status" role="status" aria-live="polite">Chọn tài liệu để bắt đầu.</div>
+<div id="result">
+<dl id="document"></dl>
+<div class="stats" id="stats"></div>
+<div class="table-wrap"><table><thead><tr><th>#</th><th>Hạng mục OCR</th><th>Loại</th><th>Tên đối chiếu / mã</th><th>Phương pháp</th></tr></thead><tbody id="rows"></tbody></table></div>
+<div class="actions"><button id="download" type="button">⬇ Tải kết quả JSON</button></div>
+<details><summary>Xem JSON đầy đủ</summary><pre id="json"></pre></details></div>
+<div id="empty" class="empty"><div class="ico">🧾</div><p>Kết quả gồm dữ liệu tài liệu, từng hạng mục, mã codebook và thời gian/chi phí của từng bước.</p></div>
+</section>
+</main>
+<script>
+const $=id=>document.getElementById(id);let config=null,result=null,previewUrl=null;
+const headers=()=>({});
+const DOC_LABELS={estimate_number:'Số báo giá',date:'Ngày',vehicle_plate:'Biển số',vehicle_model:'Loại xe',vin:'Số khung'};
+const CAT_LABELS={material:'Phụ tùng',labor:'Công',paint:'Sơn'};
+const METHOD_LABELS={exact:'Khớp chính xác',gemini:'Gemini',unmatched:'Chưa khớp'};
+const STEP_LABELS={queued:'Đang chờ worker',running:'Đang xử lý',success:'Hoàn tất',failed:'Thất bại'};
+function setStatus(state,text){const s=$('status');s.dataset.state=state;s.textContent=text;}
+async function request(url,options={}){const response=await fetch(url,{...options,headers:{...headers(),...options.headers}});const data=await response.json();if(!response.ok)throw new Error(data.detail?.message||JSON.stringify(data.detail||data));return data;}
+async function loadConfig(){config=await request('/api/v1/repair-estimate/demo-config');for(const id of ['ocr','mapping']){const selected=$(id).value;$(id).replaceChildren();for(const model of config.models){const option=document.createElement('option');option.value=option.textContent=model;$(id).append(option);}$(id).value=config.models.includes(selected)?selected:config.default_model;}}
+function showFile(file){$('drop').classList.toggle('has',!!file);$('fileName').textContent=file?file.name:'Chọn hoặc kéo thả tài liệu';$('fileHint').textContent=file?`${(file.size/1048576).toFixed(2)} MiB · bấm để đổi file`:'Ảnh · PDF · Markdown';}
+$('file').addEventListener('change',()=>{if(previewUrl)URL.revokeObjectURL(previewUrl);$('preview').style.display='none';const file=$('file').files[0];showFile(file);if(file&&['image/jpeg','image/png','image/webp'].includes(file.type)){previewUrl=URL.createObjectURL(file);$('preview').src=previewUrl;$('preview').style.display='block';}});
+for(const ev of ['dragenter','dragover'])$('drop').addEventListener(ev,()=>$('drop').classList.add('over'));
+for(const ev of ['dragleave','drop'])$('drop').addEventListener(ev,()=>$('drop').classList.remove('over'));
+function el(tag,className,text){const node=document.createElement(tag);if(className)node.className=className;if(text!==undefined)node.textContent=text;return node;}
+function badge(className,text){return el('span',`badge ${className}`,text);}
+function usd(cost){if(!cost||cost.total_usd==null)return null;return `$${Number(cost.total_usd).toFixed(4)}${cost.complete===false?' (chưa đủ định giá)':''}`;}
+function cell(row,content,className){const td=document.createElement('td');if(className)td.className=className;if(content instanceof Node)td.append(content);else td.textContent=content??'—';row.append(td);return td;}
+function render(data){result=data;$('result').style.display='block';$('empty').hidden=true;$('json').textContent=JSON.stringify(data,null,2);
+$('document').replaceChildren();for(const [key,value] of Object.entries(data.document||{})){if(value===null)continue;const box=el('div','kv');box.append(el('dt',null,DOC_LABELS[key]||key),el('dd',null,typeof value==='object'?JSON.stringify(value):String(value)));$('document').append(box);}
+$('stats').replaceChildren();for(const [name,metric] of Object.entries(data.metrics||{})){const box=el('div','stat');const head=el('div','lbl',{total:'Tổng pipeline',ocr:'OCR',mapping:'Mapping'}[name]||name);
+if(metric.cache_hit)head.append(badge('m-exact','Cache hit'));else if(name==='mapping'&&metric.cache_hits)head.append(badge('m-exact',`${metric.cache_hits} từ cache`));
+const detail=name==='mapping'?`${metric.item_count??0} hạng mục · exact ${metric.exact_count??0} · Gemini ${metric.gemini_count??0} · chưa khớp ${metric.unmatched_count??0}`:null;
+const cost=usd(metric.cost)||(metric.cache_hit?'Không gọi Gemini':'Chi phí chưa xác định');
+box.append(head,el('strong',null,`${metric.duration_seconds??'—'} s`),el('div','sub',[detail,cost].filter(Boolean).join('\n')));box.lastChild.style.whiteSpace='pre-line';$('stats').append(box);}
+$('rows').replaceChildren();(data.items||[]).forEach((item,i)=>{const row=document.createElement('tr');cell(row,i+1,'num');cell(row,item.raw_name);cell(row,badge(`b-${item.category}`,CAT_LABELS[item.category]||item.category));
+const matches=item.mapping?.matches||[];const box=document.createElement('div');if(matches.length){for(const m of matches){const chip=el('span','chip');chip.append(el('b',null,m.name),el('code',null,m.code));box.append(chip);}}else box.append(el('span','none','Chưa khớp'));cell(row,box);
+const method=item.mapping?.method;cell(row,method?badge(`m-${method}`,METHOD_LABELS[method]||method):'—');$('rows').append(row);});}
+$('form').addEventListener('submit',async event=>{event.preventDefault();$('submit').disabled=true;$('result').style.display='none';$('empty').hidden=false;try{await loadConfig();const file=$('file').files[0];if(file.size>config.max_upload_bytes)throw new Error(`File vượt giới hạn ${Math.round(config.max_upload_bytes/1048576)} MiB`);const body=new FormData();body.append('file',file);body.append('options',JSON.stringify({ocr_model:$('ocr').value,mapping_model:$('mapping').value,use_cache:true,save_mongodb:true,timeout_seconds:Number($('timeout').value)}));setStatus('busy','Đang upload tài liệu…');const job=await request('/api/v1/repair-estimate/jobs',{method:'POST',body});const start=Date.now();while(true){const state=await request(job.status_url);const text=`Job: ${job.job_id}\n${STEP_LABELS[state.status]||state.status} · ${state.step||''} · ${Math.round((Date.now()-start)/1000)} s`;if(state.status==='failed')throw new Error(state.error?.message||'Không xử lý được báo giá');if(state.status==='success'){render(await request(job.result_url));setStatus('ok',text);break;}setStatus('busy',text);await new Promise(resolve=>setTimeout(resolve,1500));}}catch(error){setStatus('err',`Lỗi: ${error.message}`);}finally{$('submit').disabled=false;}});
+$('download').addEventListener('click',()=>{if(!result)return;const url=URL.createObjectURL(new Blob([JSON.stringify(result,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download=`vre-${result.job_id}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);});
+loadConfig().catch(error=>setStatus('err',error.message));
+</script>
+</body></html>

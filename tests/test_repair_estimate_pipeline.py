@@ -8,9 +8,9 @@ from unittest.mock import Mock
 from openpyxl import Workbook
 
 from cost import cost_from_response
-from ocr import Quotation, QuotationItem
+from ocr import RepairEstimate, RepairEstimateItem
 from ocr.schema import Document
-from pipeline import run_pipeline
+from repair_estimate_pipeline import run_repair_estimate_pipeline
 
 MODEL = "gemini-3.8-flash"
 OCR_USAGE = {"total_input_tokens": 1800, "total_cached_tokens": 0,
@@ -24,14 +24,14 @@ def response(payload, usage):
                            model_dump=lambda **kwargs: {"status": "completed", "model": MODEL, "usage": usage})
 
 
-def quotation(*items):
+def repair_estimate(*items):
     rows = []
     for raw_name, category in items:
-        row = {name: None for name in QuotationItem.model_fields}
+        row = {name: None for name in RepairEstimateItem.model_fields}
         row.update(raw_name=raw_name, section_type="service", item_name=raw_name,
                    category=category, source_evidence=raw_name)
         rows.append(row)
-    return Quotation.model_validate({"document": {name: None for name in Document.model_fields}, "items": rows})
+    return RepairEstimate.model_validate({"document": {name: None for name in Document.model_fields}, "items": rows})
 
 
 class PipelineRunTests(unittest.TestCase):
@@ -47,20 +47,22 @@ class PipelineRunTests(unittest.TestCase):
             w.save(self.root / f"{prefix}_codebook.xlsx")
         self.source = self.root / "bao_gia.md"
         self.source.write_text("Báo giá")
-        self.quotation = quotation(("Sơn cản", "paint"), ("Nẹp cản trước", "material"), ("Không có", "labor"))
+        self.estimate = repair_estimate(("Sơn cản", "paint"), ("Nẹp cản trước", "material"), ("Không có", "labor"))
         self.client = Mock()
 
-    def run_pipeline(self, **kwargs):
-        return run_pipeline(self.source, model=MODEL, client=self.client, output_dir=self.root / "out",
-                            codebook_dir=self.root, verbose=False, **kwargs)
+    def run_vre_pipeline(self, **kwargs):
+        return run_repair_estimate_pipeline(
+            self.source, model=MODEL, client=self.client, output_dir=self.root / "out",
+            codebook_dir=self.root, verbose=False, **kwargs,
+        )
 
     def test_full_run_logs_results_and_costs_per_step(self):
         self.client.interactions.create.side_effect = [
-            response(self.quotation.model_dump(mode="json"), OCR_USAGE),  # OCR
+            response(self.estimate.model_dump(mode="json"), OCR_USAGE),  # OCR
             response({"selections": [{"index": 0, "name": None}]}, MAP_USAGE),            # 1 request service: Không có
             response({"selections": [{"index": 0, "name": "Cản trước"}]}, MAP_USAGE),     # 1 request part: Nẹp cản trước
         ]
-        summary = self.run_pipeline()
+        summary = self.run_vre_pipeline()
         run_dir = Path(summary["run_dir"])
         self.assertEqual(summary["status"], "success")
         self.assertEqual(summary["steps"]["ocr"]["items"], 3)
@@ -82,8 +84,8 @@ class PipelineRunTests(unittest.TestCase):
         self.assertTrue(all(call["cost"]["total_usd"] is not None for call in calls))
 
     def test_exact_only_makes_single_gemini_call(self):
-        self.client.interactions.create.return_value = response(self.quotation.model_dump(mode="json"), OCR_USAGE)
-        summary = self.run_pipeline(exact_only=True)
+        self.client.interactions.create.return_value = response(self.estimate.model_dump(mode="json"), OCR_USAGE)
+        summary = self.run_vre_pipeline(exact_only=True)
         self.assertEqual(self.client.interactions.create.call_count, 1)
         self.assertEqual(summary["steps"]["mapping"]["methods"], {"exact": 1, "unmatched": 2})
         self.assertEqual(summary["steps"]["mapping"]["cost"]["calls"], 0)
@@ -92,7 +94,7 @@ class PipelineRunTests(unittest.TestCase):
     def test_ocr_failure_still_writes_summary_with_cost(self):
         self.client.interactions.create.return_value = response({"invalid": True}, OCR_USAGE)
         with self.assertRaises(ValueError):
-            self.run_pipeline()
+            self.run_vre_pipeline()
         summary = json.loads(next((self.root / "out").rglob("summary.json")).read_text())
         self.assertEqual(summary["status"], "failed")
         self.assertEqual(summary["steps"]["ocr"]["status"], "failed")

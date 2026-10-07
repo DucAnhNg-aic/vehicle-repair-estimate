@@ -1,0 +1,112 @@
+services:
+  mongodb:
+    # MongoDB 8.0 currently refuses to start on this host's Linux 6.19 kernel.
+    image: mongo:8.2
+    container_name: vre-mongodb
+    restart: unless-stopped
+    ports:
+      - "${IP_ADDRESS:?Set IP_ADDRESS in .env}:27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USERNAME:?Set MONGO_USERNAME in .env}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:?Set MONGO_PASSWORD in .env}
+    volumes:
+      - vre_mongodb_data:/data/db
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --quiet --username \"$$MONGO_INITDB_ROOT_USERNAME\" --password \"$$MONGO_INITDB_ROOT_PASSWORD\" --authenticationDatabase admin --eval 'quit(db.adminCommand({ping: 1}).ok ? 0 : 2)'"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  mongo-express:
+    image: mongo-express:1.0.2-20-alpine3.19
+    container_name: vre-mongo-express
+    restart: unless-stopped
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    ports:
+      - "${IP_ADDRESS:?Set IP_ADDRESS in .env}:8082:8081"
+    environment:
+      ME_CONFIG_MONGODB_URL: mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@mongodb:27017/?authSource=admin
+      ME_CONFIG_MONGODB_ENABLE_ADMIN: "true"
+      ME_CONFIG_CONNECT_RETRIES: "20"
+      ME_CONFIG_BASICAUTH_USERNAME: ${MONGO_USERNAME}
+      ME_CONFIG_BASICAUTH_PASSWORD: ${MONGO_PASSWORD}
+
+  redis:
+    image: redis:7-alpine
+    container_name: vre-redis
+    restart: unless-stopped
+    # AOF để cache không mất khi restart; chỉ bind localhost vì Redis không đặt mật khẩu.
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - vre_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  api:
+    image: vehicle-repair-estimate:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: ["python", "-m", "repair_estimate_api"]
+    env_file:
+      - .env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      MONGO_URI: mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@mongodb:27017/?authSource=admin
+      VRE_API_HOST: 0.0.0.0
+      VRE_API_PORT: "8000"
+      VRE_API_UPLOAD_DIR: /tmp/vre-api/uploads
+    ports:
+      - "${IP_ADDRESS:?Set IP_ADDRESS in .env}:8000:8000"
+    volumes:
+      - vre_api_uploads:/tmp/vre-api/uploads
+      - vre_outputs:/app/outputs
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  worker:
+    image: vehicle-repair-estimate:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: ["python", "-m", "repair_estimate_api.worker"]
+    env_file:
+      - .env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      MONGO_URI: mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@mongodb:27017/?authSource=admin
+      VRE_API_UPLOAD_DIR: /tmp/vre-api/uploads
+    volumes:
+      - vre_api_uploads:/tmp/vre-api/uploads
+      - vre_outputs:/app/outputs
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  vre_mongodb_data:
+  vre_redis_data:
+  vre_api_uploads:
+  vre_outputs:
