@@ -12,7 +12,7 @@ from repair_estimate_pipeline.runner import REPAIR_ESTIMATE_OUTPUT_DIR
 
 def _load_api_env(path: Path) -> None:
     allowed = {
-        "REDIS_URL", "GEMINI_MODEL", "VRE_API_KEY", "VRE_API_ALLOWED_MODELS",
+        "REDIS_URL", "GEMINI_MODEL", "VRE_API_ALLOWED_MODELS",
         "VRE_API_QUEUE", "VRE_API_UPLOAD_DIR", "VRE_API_MAX_UPLOAD_BYTES",
         "VRE_API_RESULT_TTL_SECONDS", "VRE_API_JOB_TIMEOUT_SECONDS",
     }
@@ -48,7 +48,6 @@ class ApiSettings:
     redis_url: str
     default_model: str
     allowed_models: frozenset[str]
-    api_key: str | None
     queue_name: str
     upload_dir: Path
     output_dir: Path
@@ -74,7 +73,6 @@ class ApiSettings:
             redis_url=redis_url,
             default_model=default_model,
             allowed_models=allowed_models,
-            api_key=os.getenv("VRE_API_KEY") or None,
             queue_name=os.getenv("VRE_API_QUEUE", "repair-estimate"),
             upload_dir=Path(os.getenv("VRE_API_UPLOAD_DIR", "/tmp/vre-api/uploads")).resolve(),
             output_dir=REPAIR_ESTIMATE_OUTPUT_DIR.resolve(),

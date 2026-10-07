@@ -1,4 +1,5 @@
 .env
+nginx/auth/
 .venv/
 __pycache__/
 .pytest_cache/

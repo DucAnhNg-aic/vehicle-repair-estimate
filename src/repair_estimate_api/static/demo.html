@@ -447,10 +447,14 @@
         const val = doc[key];
         const card = document.createElement('div');
         card.className = 'bg-slate-50 border border-slate-200/80 rounded-xl p-2.5 flex flex-col justify-center';
-        card.innerHTML = `
-          <span class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">${label}</span>
-          <span class="text-xs font-bold text-slate-800 truncate mt-0.5" title="${val || 'Chưa nhận diện'}">${val || '—'}</span>
-        `;
+        const heading = document.createElement('span');
+        heading.className = 'text-[10px] font-semibold text-slate-400 uppercase tracking-wider';
+        heading.textContent = label;
+        const value = document.createElement('span');
+        value.className = 'text-xs font-bold text-slate-800 truncate mt-0.5';
+        value.title = val || 'Chưa nhận diện';
+        value.textContent = val || '—';
+        card.append(heading, value);
         docGrid.append(card);
       }
 
@@ -521,26 +525,39 @@
 
         // Matches presentation
         const matches = item.mapping?.matches || [];
-        let matchHtml = '';
+        const matchCell = document.createElement('td');
+        matchCell.className = 'px-4 py-3';
         if (matches.length > 0) {
-          matchHtml = matches.map(m => `
-            <div class="inline-flex items-center gap-1.5 bg-teal-50/60 border border-teal-200/70 rounded-md px-2 py-0.5 mr-1 mb-1">
-              <span class="font-medium text-slate-800">${m.name}</span>
-              <span class="font-mono text-[11px] font-bold text-teal-700 bg-white px-1.5 py-0.2 rounded border border-teal-200/50">${m.code}</span>
-            </div>
-          `).join('');
+          for (const match of matches) {
+            const badge = document.createElement('div');
+            badge.className = 'inline-flex items-center gap-1.5 bg-teal-50/60 border border-teal-200/70 rounded-md px-2 py-0.5 mr-1 mb-1';
+            const name = document.createElement('span');
+            name.className = 'font-medium text-slate-800';
+            name.textContent = match.name;
+            const code = document.createElement('span');
+            code.className = 'font-mono text-[11px] font-bold text-teal-700 bg-white px-1.5 rounded border border-teal-200/50';
+            code.textContent = match.code;
+            badge.append(name, code);
+            matchCell.append(badge);
+          }
         } else {
-          matchHtml = `<span class="text-slate-400 italic">Chưa khớp mã trong codebook</span>`;
+          matchCell.textContent = 'Chưa khớp mã trong codebook';
+          matchCell.classList.add('text-slate-400', 'italic');
         }
 
-        tr.innerHTML = `
-          <td class="px-4 py-3 text-center font-mono text-slate-400">${index + 1}</td>
-          <td class="px-4 py-3 font-semibold text-slate-800">${item.raw_name || '—'}</td>
-          <td class="px-4 py-3">
-            <span class="inline-block text-[11px] font-semibold px-2 py-0.5 rounded-full border ${catCfg.badge}">${catCfg.text}</span>
-          </td>
-          <td class="px-4 py-3">${matchHtml}</td>
-        `;
+        const numberCell = document.createElement('td');
+        numberCell.className = 'px-4 py-3 text-center font-mono text-slate-400';
+        numberCell.textContent = index + 1;
+        const rawCell = document.createElement('td');
+        rawCell.className = 'px-4 py-3 font-semibold text-slate-800';
+        rawCell.textContent = item.raw_name || '—';
+        const categoryCell = document.createElement('td');
+        categoryCell.className = 'px-4 py-3';
+        const categoryBadge = document.createElement('span');
+        categoryBadge.className = `inline-block text-[11px] font-semibold px-2 py-0.5 rounded-full border ${catCfg.badge}`;
+        categoryBadge.textContent = catCfg.text;
+        categoryCell.append(categoryBadge);
+        tr.append(numberCell, rawCell, categoryCell, matchCell);
         tbody.append(tr);
       });
     }

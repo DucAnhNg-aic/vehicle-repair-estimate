@@ -3,11 +3,10 @@ from __future__ import annotations
 
 import hashlib
 import json
-import secrets
 import uuid
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile, status
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
 from pydantic import ValidationError
 from redis import Redis
@@ -50,11 +49,7 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
     async def demo_logo():
         return FileResponse(Path(__file__).parent / "static" / "logo.png", media_type="image/png")
 
-    async def authorize(x_api_key: str | None = Header(default=None)) -> None:
-        if settings.api_key and (x_api_key is None or not secrets.compare_digest(x_api_key, settings.api_key)):
-            raise _error(status.HTTP_401_UNAUTHORIZED, "UNAUTHORIZED", "API key không hợp lệ")
-
-    @app.get("/api/v1/repair-estimate/demo-config", dependencies=[Depends(authorize)])
+    @app.get("/api/v1/repair-estimate/demo-config")
     async def demo_config() -> dict:
         return {"models": sorted(settings.allowed_models), "default_model": settings.default_model,
                 "max_upload_bytes": settings.max_upload_bytes}
@@ -63,7 +58,7 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
     async def live() -> dict:
         return {"status": "ok"}
 
-    @app.get("/health/ready", dependencies=[Depends(authorize)])
+    @app.get("/health/ready")
     def ready() -> dict:
         checks: dict[str, str] = {}
         try:
@@ -89,7 +84,6 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
         "/api/v1/repair-estimate/jobs",
         response_model=JobAccepted,
         status_code=status.HTTP_202_ACCEPTED,
-        dependencies=[Depends(authorize)],
     )
     async def create_job(file: UploadFile = File(...), options: str = Form("{}")) -> JobAccepted:
         suffix = Path(file.filename or "").suffix.lower()
@@ -158,7 +152,6 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
     @app.get(
         "/api/v1/repair-estimate/jobs/{job_id}",
         response_model=JobStatusResponse,
-        dependencies=[Depends(authorize)],
     )
     async def get_job(job_id: str) -> dict:
         job = fetch_job(job_id)
@@ -178,7 +171,6 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
     @app.get(
         "/api/v1/repair-estimate/jobs/{job_id}/result",
         response_model=JobResult,
-        dependencies=[Depends(authorize)],
     )
     async def get_result(job_id: str) -> dict:
         job = fetch_job(job_id)

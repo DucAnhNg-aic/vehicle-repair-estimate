@@ -47,7 +47,7 @@ class RepairEstimateApiTests(unittest.IsolatedAsyncioTestCase):
         self.queue = FakeQueue()
         self.settings = ApiSettings(
             env_file=self.root / ".env", redis_url="redis://unused", default_model="gemini-3.8-flash",
-            allowed_models=frozenset({"gemini-3.8-flash"}), api_key="secret", queue_name="test",
+            allowed_models=frozenset({"gemini-3.8-flash"}), queue_name="test",
             upload_dir=self.root / "uploads", output_dir=self.root / "outputs", codebook_dir=self.root,
             max_upload_bytes=20, result_ttl_seconds=60, job_timeout_seconds=60,
         )
@@ -55,24 +55,23 @@ class RepairEstimateApiTests(unittest.IsolatedAsyncioTestCase):
         patcher.start()
         self.addCleanup(patcher.stop)
         self.client = AsyncClient(transport=ASGITransport(app=create_app(self.settings)), base_url="http://test")
-        self.headers = {"X-API-Key": "secret"}
 
     async def asyncTearDown(self):
         await self.client.aclose()
 
     async def submit(self, options=None, content=b"image"):
         return await self.client.post(
-            "/api/v1/repair-estimate/jobs", headers=self.headers,
+            "/api/v1/repair-estimate/jobs",
             files={"file": ("estimate.jpg", content, "image/jpeg")},
             data={"options": json.dumps(options or {})},
         )
 
-    async def test_requires_api_key(self):
+    async def test_accepts_request_without_api_key(self):
         response = await self.client.post(
             "/api/v1/repair-estimate/jobs",
             files={"file": ("estimate.jpg", b"image", "image/jpeg")}, data={"options": "{}"},
         )
-        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.status_code, 202)
 
     async def test_enqueue_validates_and_resolves_options(self):
         response = await self.submit({"use_cache": False, "save_mongodb": False})
@@ -93,7 +92,7 @@ class RepairEstimateApiTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_rejects_unsupported_empty_and_large_files(self):
         unsupported = await self.client.post(
-            "/api/v1/repair-estimate/jobs", headers=self.headers,
+            "/api/v1/repair-estimate/jobs",
             files={"file": ("estimate.exe", b"x")}, data={"options": "{}"},
         )
         self.assertEqual(unsupported.status_code, 415)
@@ -111,8 +110,8 @@ class RepairEstimateApiTests(unittest.IsolatedAsyncioTestCase):
     async def test_status_and_result_contract(self):
         created = (await self.submit()).json()
         job = self.queue.jobs[created["job_id"]]
-        self.assertEqual((await self.client.get(created["status_url"], headers=self.headers)).json()["status"], "queued")
-        self.assertEqual((await self.client.get(created["result_url"], headers=self.headers)).status_code, 409)
+        self.assertEqual((await self.client.get(created["status_url"])).json()["status"], "queued")
+        self.assertEqual((await self.client.get(created["result_url"])).status_code, 409)
         job._status = "finished"
         job.result = {
             "job_id": job.id,
@@ -130,7 +129,7 @@ class RepairEstimateApiTests(unittest.IsolatedAsyncioTestCase):
             },
             "storage": {"saved": True, "run_id": "run-1"},
         }
-        self.assertEqual((await self.client.get(created["result_url"], headers=self.headers)).json(), job.result)
+        self.assertEqual((await self.client.get(created["result_url"])).json(), job.result)
 
 
 if __name__ == "__main__":

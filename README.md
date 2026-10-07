@@ -189,6 +189,31 @@ Mặc định `show` chỉ in thông tin tổng quan; thêm `--full` để xem t
 
 ## FastAPI và Redis worker
 
+### Nginx bảo vệ demo
+
+Nginx là cửa vào duy nhất tại `http://<IP_ADDRESS>:8000/demo`. UI và API đều
+yêu cầu Basic Auth. Tạo credentials local một lần trước khi chạy stack:
+
+```bash
+python nginx/create_credentials.py
+docker compose up -d --build api worker nginx mongo-express
+```
+
+Username/password nằm trong `nginx/auth/credentials.txt`, không được commit hoặc
+đóng vào image. Trình duyệt tự hỏi đăng nhập; curl dùng `-u demo` để hỏi mật khẩu.
+Không đưa Gemini key hoặc secret vào JavaScript.
+
+Nginx giới hạn body 26 MiB (API vẫn giới hạn file 25 MiB), tạo job 6 request/phút/IP
+với burst 2 và tối đa 10 kết nối/IP. `/docs`, `/redoc`, `/openapi.json` và `/health/`
+không truy cập qua gateway. FastAPI không publish cổng host; MongoDB/Mongo Express
+chỉ bind localhost. Nginx tự cập nhật IP upstream API qua Docker DNS mỗi 5 giây,
+kể cả khi API container được recreate riêng.
+
+Cấu hình hiện tại là HTTP cho LAN. Trước khi public Internet, cần domain và TLS
+(HTTPS tại gateway phía trước hoặc thêm server TLS vào Nginx); Basic Auth qua HTTP
+không mã hóa thông tin đăng nhập. Chưa có quota tổng chi phí Gemini hoặc giới hạn queue.
+Chạy kiểm tra XSS: `node tests/test_demo_xss.js`.
+
 UI demo nằm tại `/demo` trên cùng địa chỉ API (ví dụ `http://192.168.80.24:8000/demo`).
 Chọn file, thiết lập options và bấm xử lý; UI tự theo dõi job và hiển thị kết quả,
 thời gian/chi phí OCR và mapping, cùng nút tải JSON. UI được đóng trong image API.
@@ -210,7 +235,7 @@ Gửi một job:
 
 ```bash
 curl -X POST http://127.0.0.1:8000/api/v1/repair-estimate/jobs \
-  -H "X-API-Key: $VRE_API_KEY" \
+  -u demo \
   -F 'file=@data/img/TAILIEUTHIETHAIXE51K85618.jpg' \
   -F 'options={"use_cache":true,"save_mongodb":true}'
 ```
@@ -233,7 +258,6 @@ Các option public: `ocr_model`, `mapping_model`, `use_cache`,
 Biến cấu hình server tùy chọn:
 
 ```text
-VRE_API_KEY=
 VRE_API_ALLOWED_MODELS=gemini-3.8-flash
 VRE_API_HOST=127.0.0.1
 VRE_API_PORT=8000
