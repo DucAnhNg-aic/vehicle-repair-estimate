@@ -53,15 +53,15 @@ pip install -r requirements.txt
 python -m classification --dry-run
 
 # Thử 1 batch (100 dòng), lưu checkpoint để chạy tiếp.
-python -m classification --run-dir classification/outputs/trial_binary100 --max-batches 1
+python -m classification --run-dir outputs/classification/trial_binary100 --max-batches 1
 
 # Chạy tiếp tất cả batch còn lại.
-python -m classification --run-dir classification/outputs/trial_binary100 --resume
+python -m classification --run-dir outputs/classification/trial_binary100 --resume
 
 # Hoặc chạy toàn bộ trong tmux, lưu cả console log.
 tmux new -s codebook-classification
 set -o pipefail
-python -u -m classification --run-dir classification/outputs/full_binary100 2>&1 | tee /tmp/codebook-classification.log
+python -u -m classification --run-dir outputs/classification/full_binary100 2>&1 | tee /tmp/codebook-classification.log
 # Ctrl+B rồi D để tách; tmux attach -t codebook-classification để quay lại.
 ```
 

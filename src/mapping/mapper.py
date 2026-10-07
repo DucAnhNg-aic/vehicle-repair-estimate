@@ -14,7 +14,7 @@ from ocr.schema import RepairEstimate, RepairEstimateItem
 from .prompt import INSTRUCTIONS
 from .schema import BatchSelection, CodebookRow, ItemSelection, MappingResult
 
-CODEBOOK_DIR = Path(__file__).resolve().parents[1] / "codebook"
+CODEBOOK_DIR = Path(__file__).resolve().parents[2] / "data" / "codebook"
 
 
 class Codebook:

@@ -5,7 +5,7 @@ __pycache__/
 outputs/
 
 # Tài liệu riêng / dữ liệu
-img/
+data/img/
 *.jpg
 *.jpeg
 *.png
@@ -16,4 +16,4 @@ img/
 *.csv
 *.xlsx
 *.xls
-!aic.png
+!src/repair_estimate_api/static/aic.png

@@ -8,13 +8,14 @@ Chạy với Python 3.11 trong conda `da_gemini`:
 conda activate da_gemini
 cd /home/ubuntu/ducanh/vehicle-repair-estimate
 python -m pip install -r requirements.txt
+export PYTHONPATH=src   # mã nguồn nằm trong src/
 python -m ocr
 ```
 
 Script đọc `GEMINI_API_KEY`, `GEMINI_MODEL` từ `.env` và sử dụng
 biến chuỗi `PROMPT` trong `prompt.py`. Biến môi trường đã export được ưu tiên hơn `.env`;
 `--model` được ưu tiên cao nhất. `.env` hỗ trợ các dòng đơn giản `KEY=value`
-hoặc `KEY="value"`. Mặc định chạy ảnh JPG duy nhất trong `img/`.
+hoặc `KEY="value"`. Mặc định chạy ảnh JPG duy nhất trong `data/img/`.
 
 Sửa nội dung hướng dẫn trong chuỗi `PROMPT` của `prompt.py`.
 `--prompt /path/to/custom_prompt.py` dùng module Python khác có biến `PROMPT`;
@@ -25,7 +26,7 @@ File `.py` được thực thi để lấy `PROMPT`, vì vậy chỉ dùng modul
 python -m ocr --dry-run
 python -m ocr --list-models
 python -m ocr '/path/to/bao gia.pdf' --model gemini-3.6-flash
-python -m ocr 'img/TAILIEUTHIETHAIXE64A33283-20260828-071310.md'
+python -m ocr 'data/img/TAILIEUTHIETHAIXE64A33283-20260828-071310.md'
 ```
 
 File `.md`/`.markdown` được gửi dưới dạng text UTF-8 (giữ nguyên bảng HTML
@@ -65,9 +66,9 @@ Model chưa có bảng giá hoặc response thiếu usage sẽ có `total_usd: n
 ## Luồng chính: OCR → mapping (một lệnh)
 
 ```bash
-python -m repair_estimate_pipeline 'img/bao_gia.jpg'                 # OCR + mapping
-python -m repair_estimate_pipeline 'img/bao_gia.jpg' --exact-only    # mapping không gọi Gemini
-python -m repair_estimate_pipeline 'img/bao_gia.jpg' --mapping-model gemini-3.6-flash
+python -m repair_estimate_pipeline 'data/img/bao_gia.jpg'                 # OCR + mapping
+python -m repair_estimate_pipeline 'data/img/bao_gia.jpg' --exact-only    # mapping không gọi Gemini
+python -m repair_estimate_pipeline 'data/img/bao_gia.jpg' --mapping-model gemini-3.6-flash
 ```
 
 Mỗi lần chạy tạo `outputs/repair_estimate_pipeline/<timestamp>/`:
@@ -129,7 +130,7 @@ from ocr import extract_repair_estimate
 from mapping import CodebookMapper, GeminiMatcher
 
 with genai.Client() as client:  # GEMINI_API_KEY từ environment
-    estimate = extract_repair_estimate("img/bao_gia.jpg", model="your-model", client=client)
+    estimate = extract_repair_estimate("data/img/bao_gia.jpg", model="your-model", client=client)
     mapper = CodebookMapper(matcher=GeminiMatcher(client, "your-model"))
     mappings = mapper.map_repair_estimate(estimate)
     # Hoặc mapper.map_item(estimate.items[0])
@@ -154,7 +155,7 @@ python -m mapping '/path/to/result.json' --output outputs/mapped.json
 # Test exact offline, không cần key
 python -m mapping '/path/to/result.json' --exact-only --output outputs/exact.json
 # Unit tests offline (mock Gemini)
-python -m unittest discover -s tests -v
+PYTHONPATH=src python -m unittest discover -s tests -v
 ```
 
 CLI mapping giữ các trường OCR và thêm `mapping` vào mỗi item, theo đúng thứ tự.
@@ -165,7 +166,7 @@ Gemini, kể cả khi mapping thất bại. Chạy lại cùng `--output` sẽ g
 
 ## Lưu và xem kết quả bằng MongoDB
 
-Chạy pipeline và tự động lưu DB: `./run_repair_estimate_pipeline.sh img/ --save-mongodb`.
+Chạy pipeline và tự động lưu DB: `./run_repair_estimate_pipeline.sh data/img/ --save-mongodb`.
 Option này dùng được với cả file và folder. Pipeline kiểm tra DB trước khi gọi
 Gemini. Nếu ghi DB thất bại sau xử lý, JSON vẫn còn để import lại bằng lệnh bên dưới.
 
@@ -210,7 +211,7 @@ Gửi một job:
 ```bash
 curl -X POST http://127.0.0.1:8000/api/v1/repair-estimate/jobs \
   -H "X-API-Key: $VRE_API_KEY" \
-  -F 'file=@img/TAILIEUTHIETHAIXE51K85618.jpg' \
+  -F 'file=@data/img/TAILIEUTHIETHAIXE51K85618.jpg' \
   -F 'options={"use_cache":true,"save_mongodb":true}'
 ```
 

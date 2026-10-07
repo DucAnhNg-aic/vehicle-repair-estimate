@@ -2,13 +2,13 @@
 # Chạy toàn bộ OCR → mapping codebook (exact match + Gemini fallback).
 #
 # Cách dùng (đường dẫn tương đối tính từ thư mục đang gọi lệnh):
-#   ./run_repair_estimate_pipeline.sh 'img/bao gia.pdf'
-#   ./run_repair_estimate_pipeline.sh 'img/' --timeout 300
+#   ./run_repair_estimate_pipeline.sh 'data/img/bao gia.pdf'
+#   ./run_repair_estimate_pipeline.sh 'data/img/' --timeout 300
 # Folder: chạy tuần tự file được hỗ trợ ngay trong folder, không duyệt folder con.
 # Tiếp tục khi một file lỗi; trả exit code 1 nếu có bất kỳ file nào lỗi.
-#   ./run_repair_estimate_pipeline.sh 'img/bao gia.jpg' --model gemini-3.8-flash \
+#   ./run_repair_estimate_pipeline.sh 'data/img/bao gia.jpg' --model gemini-3.8-flash \
 #       --mapping-model gemini-3.8-flash --timeout 300
-#   ./run_repair_estimate_pipeline.sh 'img/bao gia.pdf' --exact-only
+#   ./run_repair_estimate_pipeline.sh 'data/img/bao gia.pdf' --exact-only
 #   ./run_repair_estimate_pipeline.sh --help
 #
 # Các option CLI có thể truyền sau đường dẫn input:
@@ -31,7 +31,7 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PYTHON_BIN="${PYTHON_BIN:-python}"
 ENV_FILE="${ENV_FILE:-$SCRIPT_DIR/.env}"
 OUTPUT_DIR="${OUTPUT_DIR:-$SCRIPT_DIR/outputs/repair_estimate_pipeline}"
-CODEBOOK_DIR="${CODEBOOK_DIR:-$SCRIPT_DIR/codebook}"
+CODEBOOK_DIR="${CODEBOOK_DIR:-$SCRIPT_DIR/data/codebook}"
 TIMEOUT="${TIMEOUT:-180}"
 
 if (( $# == 0 )); then
@@ -42,7 +42,7 @@ fi
 
 # Cho phép import VRE pipeline khi gọi script từ thư mục khác; giữ nguyên cwd
 # để các đường dẫn input/option tương đối vẫn đúng với nơi gọi lệnh.
-export PYTHONPATH="$SCRIPT_DIR${PYTHONPATH:+:$PYTHONPATH}"
+export PYTHONPATH="$SCRIPT_DIR/src${PYTHONPATH:+:$PYTHONPATH}"
 command=("$PYTHON_BIN" -m repair_estimate_pipeline
     --env-file "$ENV_FILE"
     --output-dir "$OUTPUT_DIR"

@@ -9,7 +9,7 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 outputs/
-img/
+data/img/
 tests/
 *.log
 *.csv
@@ -17,7 +17,7 @@ tests/
 *.jpg
 *.jpeg
 *.png
-!aic.png
+!src/repair_estimate_api/static/aic.png
 *.webp
 *.heic
 *.heif

@@ -48,7 +48,7 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
 
     @app.get("/demo/logo.png", include_in_schema=False)
     async def demo_logo():
-        return FileResponse(Path(__file__).resolve().parents[1] / "aic.png", media_type="image/png")
+        return FileResponse(Path(__file__).parent / "static" / "aic.png", media_type="image/png")
 
     async def authorize(x_api_key: str | None = Header(default=None)) -> None:
         if settings.api_key and (x_api_key is None or not secrets.compare_digest(x_api_key, settings.api_key)):

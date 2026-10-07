@@ -71,8 +71,7 @@ services:
     volumes:
       - vre_api_uploads:/tmp/vre-api/uploads
       - vre_outputs:/app/outputs
-      - ./repair_estimate_api/static:/app/repair_estimate_api/static:ro
-      - ./aic.png:/app/aic.png:ro
+      - ./src/repair_estimate_api/static:/app/src/repair_estimate_api/static:ro
     depends_on:
       mongodb:
         condition: service_healthy

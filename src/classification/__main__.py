@@ -19,12 +19,12 @@ from .classifier import digest, export_xlsx, read_rows, unique_names, validate_b
 from .prompt import PROMPT
 from .schema import ClassificationBatch
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]  # classification -> src -> thư mục gốc dự án
 
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--input", type=Path, default=ROOT / "codebook/codebook.xlsx")
+    p.add_argument("--input", type=Path, default=ROOT / "data/codebook/codebook.xlsx")
     p.add_argument("--sheet", default="Codebook phụ tùng")
     p.add_argument("--env-file", type=Path, default=ROOT / ".env")
     p.add_argument("--model")
@@ -58,7 +58,7 @@ def main():
         return
     if not os.getenv("GEMINI_API_KEY"):
         p.error("Thiếu GEMINI_API_KEY")
-    run = a.run_dir or ROOT / "classification/outputs" / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S_%fZ")
+    run = a.run_dir or ROOT / "outputs" / "classification" / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S_%fZ")
     if a.resume:
         if json.loads((run / "manifest.json").read_text()) != manifest:
             raise ValueError("Không resume: input/model/batch size/prompt/schema đã thay đổi")

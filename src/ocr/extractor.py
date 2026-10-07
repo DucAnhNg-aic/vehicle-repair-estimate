@@ -22,8 +22,8 @@ from cost import cost_from_response, estimate_cost
 from llm_cache import ocr_key
 
 ROOT = Path(__file__).resolve().parent  # thư mục ocr (.env, prompt.py)
-PROJECT_ROOT = ROOT.parent
-IMG_DIR = PROJECT_ROOT / "img"
+PROJECT_ROOT = ROOT.parents[1]  # ocr -> src -> thư mục gốc dự án (.env, data/, outputs/)
+IMG_DIR = PROJECT_ROOT / "data" / "img"
 OUTPUT_DIR = PROJECT_ROOT / "outputs"
 SUPPORTED = {"application/pdf", "image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"}
 INLINE_LIMIT = 15 * 1024 * 1024  # Leave room for base64 expansion and prompt.
