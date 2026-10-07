@@ -9,7 +9,8 @@ from pathlib import Path
 from openpyxl import load_workbook
 
 from cost import cost_from_response, estimate_cost, sum_costs
-from ocr.schema import Quotation, QuotationItem
+from llm_cache import mapping_context, mapping_key
+from ocr.schema import RepairEstimate, RepairEstimateItem
 from .prompt import INSTRUCTIONS
 from .schema import BatchSelection, CodebookRow, ItemSelection, MappingResult
 
@@ -48,14 +49,45 @@ class GeminiMatcher:
     """
     INSTRUCTIONS = INSTRUCTIONS  # service / part: mỗi codebook một prompt riêng
 
-    def __init__(self, client, model: str):
-        self.client, self.model = client, model
+    def __init__(self, client, model: str, cache=None):
+        self.client, self.model, self.cache = client, model, cache
         self.calls: list[dict] = []
+        self.cache_hits = self.cache_misses = 0  # số item được/không được phục vụ từ cache
 
-    def select_many(self, items: list[QuotationItem], names: list[str]) -> list[str | None]:
-        """Một request cho cả ``items``; trả về tên (hoặc None) theo đúng thứ tự ``items``."""
-        started = time.perf_counter()
+    def select_many(self, items: list[RepairEstimateItem], names: list[str]) -> list[str | None]:
+        """Một request cho cả ``items``; trả về tên (hoặc None) theo đúng thứ tự ``items``.
+
+        Có ``cache``: item đã có kết quả được lấy từ cache, chỉ item còn lại (bỏ trùng) mới gửi Gemini;
+        kết quả mới chỉ được ghi cache sau khi qua mọi bước kiểm tra.
+        """
         kind = "part" if all(item.category == "material" for item in items) else "service"
+        if self.cache is None:
+            return self._request(items, names, kind)
+        context = mapping_context(model=self.model, instructions=self.INSTRUCTIONS[kind], names=names)
+        keys = [mapping_key(context, item.model_dump(mode="json")) for item in items]
+        valid = set(names)
+        selected: list[str | None] = [None] * len(items)
+        missing: dict[str, list[int]] = {}  # khóa -> vị trí; item trùng khóa chỉ gửi một lần
+        for pos, key in enumerate(keys):
+            cached = self.cache.get(key)
+            name = cached.get("name") if isinstance(cached, dict) and "name" in cached else False
+            if name is None or (isinstance(name, str) and name in valid):
+                selected[pos] = name
+                self.cache_hits += 1
+            else:  # miss, hoặc giá trị cache không còn thuộc codebook
+                missing.setdefault(key, []).append(pos)
+        if missing:
+            fresh = self._request([items[positions[0]] for positions in missing.values()], names, kind)
+            for (key, positions), name in zip(missing.items(), fresh):
+                self.cache.set(key, {"name": name})
+                for pos in positions:
+                    selected[pos] = name
+                self.cache_misses += len(positions)
+        return selected
+
+    def _request(self, items: list[RepairEstimateItem], names: list[str], kind: str) -> list[str | None]:
+        """Gửi một request Gemini cho ``items`` bằng prompt ``kind``."""
+        started = time.perf_counter()
         audit = {"items": [item.raw_name for item in items], "categories": sorted({item.category for item in items}),
                  "prompt": kind, "model": self.model, "status": "failed"}
         try:
@@ -85,7 +117,7 @@ class GeminiMatcher:
             audit["elapsed_seconds"] = round(time.perf_counter() - started, 3)
             self.calls.append(audit)
 
-    def select(self, item: QuotationItem, names: list[str]) -> str | None:
+    def select(self, item: RepairEstimateItem, names: list[str]) -> str | None:
         """Map một item (một request)."""
         return self.select_many([item], names)[0]
 
@@ -103,18 +135,18 @@ class CodebookMapper:
         self.part = Codebook(root / "part_codebook.xlsx")
         self.matcher = matcher
 
-    def book_for(self, item: QuotationItem) -> Codebook:
+    def book_for(self, item: RepairEstimateItem) -> Codebook:
         return self.part if item.category == "material" else self.service
 
-    def _result(self, item: QuotationItem, matches: list[CodebookRow], method: str) -> MappingResult:
+    def _result(self, item: RepairEstimateItem, matches: list[CodebookRow], method: str) -> MappingResult:
         return MappingResult(raw_name=item.raw_name, category=item.category,
                              codebook=self.book_for(item).path.name, method=method, matches=matches)
 
-    def map_item(self, item: QuotationItem) -> MappingResult:
+    def map_item(self, item: RepairEstimateItem) -> MappingResult:
         """Map một item (exact, rồi một request Gemini nếu không khớp)."""
         return self.map_items([item])[0]
 
-    def map_items(self, items: list[QuotationItem]) -> list[MappingResult]:
+    def map_items(self, items: list[RepairEstimateItem]) -> list[MappingResult]:
         """Exact match trước; các item còn lại gửi Gemini theo batch, mỗi codebook một request
         (tối đa ``BATCH_SIZE`` item/request). Trả một kết quả cho mỗi item, đúng thứ tự."""
         results: list[MappingResult | None] = [None] * len(items)
@@ -144,6 +176,6 @@ class CodebookMapper:
                         results[pos] = self._result(items[pos], book.by_name[name], "gemini")
         return results  # type: ignore[return-value]
 
-    def map_quotation(self, quotation: Quotation) -> list[MappingResult]:
+    def map_repair_estimate(self, estimate: RepairEstimate) -> list[MappingResult]:
         """One result per OCR item, in original order (including unmatched items)."""
-        return self.map_items(quotation.items)
+        return self.map_items(estimate.items)

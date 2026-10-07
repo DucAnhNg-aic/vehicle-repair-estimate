@@ -3,3 +3,5 @@ pydantic>=2.0.0
 openpyxl>=3.1,<4
 tqdm>=4.66,<5
 pytest>=8.0.0
+pymongo>=4,<5
+redis>=5,<6
