@@ -6,7 +6,7 @@
   <title>VRE · Hệ thống đọc & đối chiếu báo giá tự động</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
@@ -41,13 +41,46 @@
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 9999px; }
     ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+    /* Bảng báo giá kiểu sổ cái gara: header navy 2 tầng, 3 làn màu vật tư/công/sơn */
+    .ledger-wrap { max-height: 70vh; overflow: auto; }
+    .ledger { border-collapse: separate; border-spacing: 0; min-width: 960px; width: 100%; font-size: 12px; }
+    .ledger th, .ledger td { padding: 8px 8px; border-bottom: 1px solid #e8edf2; border-right: 1px solid #f1f5f9; }
+    .ledger thead th { position: sticky; z-index: 20; background: #0e2030; color: #e2e8f0; font-size: 10.5px;
+      font-weight: 700; letter-spacing: .08em; text-transform: uppercase; text-align: center; border-right: 1px solid #1d3a52; border-bottom: 1px solid #1d3a52; }
+    .ledger thead tr.l1 th { top: 0; height: 40px; }
+    .ledger thead tr.l2 th { top: 40px; background: #162f44; font-size: 10px; color: #cbd5e1; white-space: nowrap; }
+    .ledger thead th.grp { color: #5eead4; border-bottom: 2px solid #14b8a6; }
+    .ledger thead th.lane-mat { box-shadow: inset 0 3px 0 #f59e0b; }
+    .ledger thead th.lane-lab { box-shadow: inset 0 3px 0 #38bdf8; }
+    .ledger thead th.lane-paint { box-shadow: inset 0 3px 0 #fb7185; }
+    .ledger .sticky-code, .ledger .sticky-name { position: sticky; background: #fff; z-index: 10; }
+    .ledger .sticky-code { left: 0; width: 84px; min-width: 84px; max-width: 84px; overflow-wrap: anywhere; }
+    .ledger .sticky-name { left: 84px; box-shadow: 1px 0 0 #e2e8f0, 6px 0 8px -6px rgba(15,32,48,.18); }
+    .ledger thead th.sticky-code, .ledger thead th.sticky-name { z-index: 30; background: #0e2030; }
+    .ledger tbody tr:nth-child(even) td { background: #fafcfd; }
+    .ledger tbody tr:hover td { background: #f0fdfa; }
+    .ledger td.num { text-align: right; font-size: 11.5px; font-family: "IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; color: #cbd5e1; white-space: nowrap; }
+    .ledger td.num.nz { color: #0f172a; font-weight: 600; }
+    .ledger td.num.lane-mat.nz { background: #fffbeb !important; color: #92400e; }
+    .ledger td.num.lane-lab.nz { background: #f0f9ff !important; color: #075985; }
+    .ledger td.num.lane-paint.nz { background: #fff1f2 !important; color: #9f1239; }
+    .ledger td.code { font-family: "IBM Plex Mono", ui-monospace, monospace; color: #64748b; font-size: 11px; }
+    .ledger td.qty { text-align: center; font-family: "IBM Plex Mono", ui-monospace, monospace; color: #334155; }
+    @keyframes ledger-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+    .ledger tbody tr { animation: ledger-in .32s ease both; }
+    .ledger tbody tr:nth-child(2) { animation-delay: .03s; } .ledger tbody tr:nth-child(3) { animation-delay: .06s; }
+    .ledger tbody tr:nth-child(4) { animation-delay: .09s; } .ledger tbody tr:nth-child(5) { animation-delay: .12s; }
+    .ledger tbody tr:nth-child(6) { animation-delay: .15s; } .ledger tbody tr:nth-child(7) { animation-delay: .18s; }
+    .ledger tbody tr:nth-child(n+8) { animation-delay: .21s; }
+    @media (prefers-reduced-motion: reduce) { .ledger tbody tr { animation: none; } }
   </style>
 </head>
 <body class="flex flex-col min-h-full text-slate-800 font-sans selection:bg-teal-500 selection:text-white">
 
   <!-- TOP NAVIGATION HEADER -->
   <header class="bg-navy-900 border-b border-navy-800 text-white shadow-sm sticky top-0 z-30">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+    <div class="max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
       <div class="flex items-center gap-4">
         <img src="/demo/logo.png" alt="AICycle" class="h-9 sm:h-10 w-auto object-contain" onerror="this.style.display='none'">
         <div class="h-8 w-px bg-slate-700/60 hidden sm:block"></div>
@@ -70,11 +103,11 @@
   </header>
 
   <!-- MAIN CONTAINER -->
-  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
-    <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+  <main class="flex-1 max-w-[1680px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+    <div class="grid grid-cols-1 xl:grid-cols-12 gap-6 xl:gap-8 items-start">
       
       <!-- LEFT COLUMN: INPUT CONTROLS (ONLY UPLOAD) -->
-      <div class="lg:col-span-4 lg:sticky lg:top-24 space-y-6">
+      <div class="xl:col-span-3 xl:sticky xl:top-24 space-y-6">
         <div class="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-5 sm:p-6 space-y-5">
           <div class="flex items-center justify-between border-b border-slate-100 pb-3.5">
             <h2 class="text-base font-bold text-slate-900 flex items-center gap-2">
@@ -124,6 +157,19 @@
               </div>
             </div>
 
+            <!-- AI OPTIONS -->
+            <div id="aiOptions" class="grid grid-cols-2 gap-3 text-xs">
+              <label class="space-y-1"><span class="block font-semibold text-slate-600">Model OCR</span>
+                <select id="ocrModel" class="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-slate-700 focus:border-teal-500 focus:outline-none"></select></label>
+              <label class="space-y-1"><span class="block font-semibold text-slate-600">Reasoning OCR</span>
+                <select id="ocrThinking" class="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-slate-700 focus:border-teal-500 focus:outline-none"></select></label>
+              <label class="space-y-1"><span class="block font-semibold text-slate-600">Model mapping</span>
+                <select id="mappingModel" class="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-slate-700 focus:border-teal-500 focus:outline-none"></select></label>
+              <label class="space-y-1"><span class="block font-semibold text-slate-600">Reasoning mapping</span>
+                <select id="mappingThinking" class="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-slate-700 focus:border-teal-500 focus:outline-none"></select></label>
+              <p class="col-span-2 text-[11px] text-slate-400">Đổi model hoặc reasoning sẽ phân tích lại từ đầu; giữ nguyên thì dùng lại kết quả đã lưu.</p>
+            </div>
+
             <!-- SUBMIT BUTTON -->
             <button id="submit" type="submit" class="w-full inline-flex items-center justify-center gap-2 bg-brand-600 hover:bg-brand-700 active:bg-brand-800 text-white font-semibold text-sm px-4 py-3.5 rounded-xl shadow-sm hover:shadow transition-all disabled:opacity-50 disabled:cursor-not-allowed">
               <svg id="submitIcon" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -135,13 +181,20 @@
               </svg>
               <span id="submitText">Bắt đầu phân tích báo giá</span>
             </button>
+            <button id="rerun" type="submit" disabled class="w-full inline-flex items-center justify-center gap-2 border border-brand-600 text-brand-700 bg-white hover:bg-brand-50 font-semibold text-sm px-4 py-3 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h5m-5 0a8 8 0 111 9" />
+              </svg>
+              Phân tích lại từ đầu
+            </button>
+            <p class="text-[11px] text-center text-slate-500">Phân tích lại từ đầu sẽ bỏ qua kết quả đã lưu.</p>
             <p class="text-[11px] text-center text-slate-400">Tự động bóc tách thông tin và đối chiếu mã danh mục phụ tùng chuẩn</p>
           </form>
         </div>
       </div>
 
       <!-- RIGHT COLUMN: RESULTS & ANALYTICS -->
-      <div class="lg:col-span-8 space-y-6">
+      <div class="xl:col-span-9 min-w-0 space-y-6">
         
         <!-- STATUS NOTIFICATION BANNER -->
         <div id="statusCard" class="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-4 transition-all">
@@ -259,14 +312,28 @@
             </div>
 
             <!-- Table View -->
-            <div class="overflow-x-auto">
-              <table class="w-full text-left text-xs text-slate-600">
-                <thead class="bg-slate-50/80 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">
-                  <tr>
-                    <th class="px-4 py-3 w-10 text-center">#</th>
-                    <th class="px-4 py-3 min-w-[220px]">Hạng mục báo giá (OCR)</th>
-                    <th class="px-4 py-3 w-28">Phân loại</th>
-                    <th class="px-4 py-3 min-w-[280px]">Đối chiếu Codebook chuẩn</th>
+            <div class="ledger-wrap">
+              <table class="ledger text-left text-slate-600">
+                <thead>
+                  <tr class="l1">
+                    <th rowspan="2" class="sticky-code">Mã hạng mục</th>
+                    <th rowspan="2" class="sticky-name" style="min-width:190px">Tên hạng mục</th>
+                    <th rowspan="2">Số lượng</th>
+                    <th colspan="3" class="grp">Tiền gara báo giá</th>
+                    <th colspan="3" class="grp">Giảm giá (%) trước tính toán</th>
+                    <th colspan="3" class="grp">Tỷ lệ thuế (%)</th>
+                    <th rowspan="2" style="min-width:210px">Đối chiếu codebook chuẩn</th>
+                  </tr>
+                  <tr class="l2">
+                    <th class="lane-mat">Vật tư</th>
+                    <th class="lane-lab">Nhân công</th>
+                    <th class="lane-paint">Sơn</th>
+                    <th class="lane-mat">Vật tư</th>
+                    <th class="lane-lab">Nhân công</th>
+                    <th class="lane-paint">Sơn</th>
+                    <th class="lane-mat">Vật tư</th>
+                    <th class="lane-lab">Nhân công</th>
+                    <th class="lane-paint">Sơn</th>
                   </tr>
                 </thead>
                 <tbody id="tableRows" class="divide-y divide-slate-100">
@@ -350,6 +417,26 @@
       } catch (err) {
         // demo-config is optional if not available
       }
+      renderAiOptions();
+    }
+
+    // Dropdown model/reasoning: "Auto" = dùng cấu hình mặc định của server (value rỗng)
+    function fillSelect(id, values, autoLabel) {
+      const select = $(id);
+      if (select.dataset.ready) return;
+      select.dataset.ready = '1';
+      select.add(new Option(autoLabel, ''));
+      values.forEach(value => select.add(new Option(value, value)));
+    }
+    function renderAiOptions() {
+      if (!appConfig) return;
+      $('aiOptions').classList.toggle('hidden', appConfig.show_ai_options === false);
+      const models = appConfig.models || [];
+      const levels = appConfig.thinking_levels || [];
+      fillSelect('ocrModel', models, `Auto (${appConfig.default_model})`);
+      fillSelect('mappingModel', models, `Auto (${appConfig.default_mapping_model})`);
+      fillSelect('ocrThinking', levels, `Auto (${appConfig.default_ocr_thinking_level || 'mặc định model'})`);
+      fillSelect('mappingThinking', levels, `Auto (${appConfig.default_mapping_thinking_level})`);
     }
 
     // Status management
@@ -388,6 +475,7 @@
     // File selection & Large preview
     $('file').addEventListener('change', () => {
       const file = $('file').files[0];
+      $('rerun').disabled = $('submit').disabled || !file;
       if (!file) return;
 
       $('fileName').textContent = file.name;
@@ -433,6 +521,14 @@
     });
 
     // Render results
+    function clearResult() {
+      currentResult = null;
+      $('resultContainer').classList.add('hidden');
+      $('emptyState').classList.remove('hidden');
+      $('jsonPre').textContent = '';
+      $('itemSearch').value = '';
+    }
+
     function renderResult(data) {
       currentResult = data;
       $('emptyState').classList.add('hidden');
@@ -492,6 +588,23 @@
       renderTableRows(data.items || []);
     }
 
+    const NUM_COLUMNS = [
+      ['material_amount', 'mat'], ['labor_amount', 'lab'], ['paint_amount', 'paint'],
+      ['material_discount_rate', 'mat'], ['labor_discount_rate', 'lab'], ['paint_discount_rate', 'paint'],
+      ['material_tax_rate', 'mat'], ['labor_tax_rate', 'lab'], ['paint_tax_rate', 'paint'],
+    ];
+
+    function formatNumber(value) {
+      return typeof value === 'number' ? value.toLocaleString('vi-VN') : '—';
+    }
+
+    function textCell(text, className) {
+      const td = document.createElement('td');
+      td.className = className;
+      td.textContent = text;
+      return td;
+    }
+
     function renderTableRows(items) {
       const tbody = $('tableRows');
       tbody.replaceChildren();
@@ -502,7 +615,7 @@
       let filtered = items.filter(it => {
         if (currentFilter !== 'all' && it.category !== currentFilter) return false;
         if (search) {
-          const raw = (it.raw_name || '').toLowerCase();
+          const raw = `${it.raw_name || ''} ${it.raw_code || ''}`.toLowerCase();
           const matches = (it.mapping?.matches || []).map(m => `${m.name} ${m.code}`).join(' ').toLowerCase();
           return raw.includes(search) || matches.includes(search);
         }
@@ -511,22 +624,21 @@
 
       if (!filtered.length) {
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td colspan="4" class="px-4 py-8 text-center text-slate-400">Không tìm thấy hạng mục phù hợp bộ lọc</td>`;
+        const td = textCell('Không tìm thấy hạng mục phù hợp bộ lọc', 'px-4 py-8 text-center text-slate-400');
+        td.colSpan = 13;
+        tr.append(td);
         tbody.append(tr);
         return;
       }
 
-      filtered.forEach((item, index) => {
+      filtered.forEach(item => {
         const tr = document.createElement('tr');
         tr.className = 'hover:bg-slate-50/80 transition-colors';
-
-        // Category config
-        const catCfg = CAT_LABELS[item.category] || { text: item.category, badge: 'bg-slate-50 text-slate-600' };
 
         // Matches presentation
         const matches = item.mapping?.matches || [];
         const matchCell = document.createElement('td');
-        matchCell.className = 'px-4 py-3';
+        matchCell.className = '';
         if (matches.length > 0) {
           for (const match of matches) {
             const badge = document.createElement('div');
@@ -545,19 +657,17 @@
           matchCell.classList.add('text-slate-400', 'italic');
         }
 
-        const numberCell = document.createElement('td');
-        numberCell.className = 'px-4 py-3 text-center font-mono text-slate-400';
-        numberCell.textContent = index + 1;
-        const rawCell = document.createElement('td');
-        rawCell.className = 'px-4 py-3 font-semibold text-slate-800';
-        rawCell.textContent = item.raw_name || '—';
-        const categoryCell = document.createElement('td');
-        categoryCell.className = 'px-4 py-3';
-        const categoryBadge = document.createElement('span');
-        categoryBadge.className = `inline-block text-[11px] font-semibold px-2 py-0.5 rounded-full border ${catCfg.badge}`;
-        categoryBadge.textContent = catCfg.text;
-        categoryCell.append(categoryBadge);
-        tr.append(numberCell, rawCell, categoryCell, matchCell);
+        const cells = [
+          textCell(item.raw_code || '', 'sticky-code code'),
+          textCell(item.raw_name || '—', 'sticky-name font-semibold text-slate-800'),
+          textCell(formatNumber(item.quantity), 'qty'),
+        ];
+        for (const [key, lane] of NUM_COLUMNS) {
+          const value = item[key];
+          const nonZero = typeof value === 'number' && value !== 0;
+          cells.push(textCell(formatNumber(value), `num lane-${lane}${nonZero ? ' nz' : ''}`));
+        }
+        tr.append(...cells, matchCell);
         tbody.append(tr);
       });
     }
@@ -584,9 +694,12 @@
     $('form').addEventListener('submit', async e => {
       e.preventDefault();
       const file = $('file').files[0];
-      if (!file) return;
+      if (!file || $('submit').disabled) return;
+      const useCache = e.submitter?.id !== 'rerun';
 
+      clearResult();
       $('submit').disabled = true;
+      $('rerun').disabled = true;
       $('submitIcon').classList.add('hidden');
       $('submitSpinner').classList.remove('hidden');
       $('submitText').textContent = 'Đang gửi tài liệu...';
@@ -602,7 +715,11 @@
         const formData = new FormData();
         formData.append('file', file);
         formData.append('options', JSON.stringify({
-          use_cache: true,
+          use_cache: useCache,
+          ocr_model: $('ocrModel').value || null,
+          mapping_model: $('mappingModel').value || null,
+          ocr_thinking_level: $('ocrThinking').value || null,
+          mapping_thinking_level: $('mappingThinking').value || null,
           save_mongodb: true,
           timeout_seconds: 180
         }));
@@ -644,6 +761,7 @@
         setJobStatus('error', 'Lỗi: ' + err.message);
       } finally {
         $('submit').disabled = false;
+        $('rerun').disabled = !$('file').files[0];
         $('submitIcon').classList.remove('hidden');
         $('submitSpinner').classList.add('hidden');
         $('submitText').textContent = 'Bắt đầu phân tích báo giá';
