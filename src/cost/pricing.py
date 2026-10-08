@@ -23,6 +23,7 @@ REGULAR_FROM = date(2027, 1, 1)
 # USD / 1M token: (input, cached_input, output gồm cả thinking).
 PRICES: dict[str, dict[str, tuple[str, str, str] | None]] = {
     "gemini-3.6-flash": {"promo": ("0.75", "0.075", "3.75"), "regular": ("1.50", "0.15", "7.50")},
+    "gemini-3.7-flash": {"promo": ("0.75", "0.075", "3.75"), "regular": ("1.50", "0.15", "7.50")},
     "gemini-3.8-flash": {"promo": ("0.75", "0.075", "3.75"), "regular": ("1.50", "0.15", "7.50")},
     # Giá thường từ 2027-01-01 của Flash-Lite chưa được Google công bố rõ nên để None, không đoán.
     "gemini-3.5-flash-lite": {"promo": ("0.30", "0.03", "2.50"), "regular": None},

@@ -182,6 +182,14 @@ class GeminiMatcherCacheTests(unittest.TestCase):
         self.client.models.generate_content.return_value = response(
             {"selections": [{"index": i, "name": n} for i, n in enumerate(names)]})
 
+    def test_invalid_name_becomes_null_and_is_not_cached(self):
+        self.reply("Sơn cản", "tự bịa")  # item b: tên ngoài codebook
+        self.assertEqual(self.matcher.select_many(self.items, self.NAMES), ["Sơn cản", None])
+        self.assertEqual(len(self.cache.data), 1)  # chỉ kết quả hợp lệ được cache
+        self.reply("Cản trước")  # lần sau chỉ hỏi lại item b (a đã cache), không dính null cũ
+        self.assertEqual(self.matcher.select_many(self.items, self.NAMES), ["Sơn cản", "Cản trước"])
+        self.assertEqual(self.client.models.generate_content.call_count, 2)
+
     def test_work_cache_roundtrip_and_item_type_change(self):
         names = {"part": ["Cánh cửa"], "service": []}
         self.client.models.generate_content.return_value = response({"selections": [
@@ -238,7 +246,7 @@ class GeminiMatcherCacheTests(unittest.TestCase):
         self.assertEqual(self.client.models.generate_content.call_count, 1)
 
     def test_failed_or_invalid_response_is_not_cached(self):
-        self.reply("invented", None)
+        self.reply("Sơn cản")  # thiếu index 1: cấu trúc sai thì vẫn lỗi và không ghi gì vào cache
         with self.assertRaises(ValueError):
             self.matcher.select_many(self.items, self.NAMES)
         self.assertEqual(self.cache.sets, 0)

@@ -51,6 +51,25 @@ class MongoStorageTests(unittest.TestCase):
         self.assertEqual(result["metrics"]["mapping"]["item_count"], 2)
         self.assertEqual([item["index"] for item in result["items"]], [0, 1])
 
+    def test_sha256_survives_missing_uploaded_file(self):
+        path = self.run_dir / "summary.json"
+        payload = json.loads(path.read_text())
+        payload["input_sha256"] = "a" * 64
+        path.write_text(json.dumps(payload))
+        self.assertEqual(build_run_document(self.run_dir)["input"]["sha256"], "a" * 64)
+
+    def test_legacy_run_without_digest_remains_readable(self):
+        self.assertIsNone(build_run_document(self.run_dir)["input"]["sha256"])
+
+    def test_file_grouping_index_is_not_unique(self):
+        client = MagicMock()
+        repo = RepairEstimateRepository(MongoSettings("mongodb://unused"), client=client)
+        repo.ensure_indexes()
+        calls = repo.collection.create_index.call_args_list
+        digest_call = next(c for c in calls if c.kwargs.get("name") == "input_sha256")
+        self.assertEqual(digest_call.args[0], [("input.sha256", 1)])
+        self.assertFalse(digest_call.kwargs.get("unique", False))
+
     def test_legacy_number_is_normalized_for_mongodb(self):
         path = self.run_dir / "mapping.json"
         payload = json.loads(path.read_text())

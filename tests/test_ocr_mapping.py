@@ -107,8 +107,10 @@ class PipelineTests(unittest.TestCase):
         matcher = GeminiMatcher(client, "test", context_cache_enabled=False)
         names = {"part": ["Cánh cửa"], "service": ["Công tháo lắp"]}
         items = [self.item("Công sơn cánh cửa", "paint")]
-        for selection in [dict(index=0, name="Cánh cửa", item_type="service"),
-                          dict(index=0, name="Cánh cửa", item_type=None),
+        # cặp (item_type, name) không có trong codebook -> null, không làm hỏng cả batch
+        client.models.generate_content.return_value = response({"selections": [dict(index=0, name="Cánh cửa", item_type="service")]})
+        self.assertEqual(matcher.select_many(items, names), [None])
+        for selection in [dict(index=0, name="Cánh cửa", item_type=None),
                           dict(index=0, name=None, item_type="part"),
                           dict(index=1, name="Cánh cửa", item_type="part")]:
             client.models.generate_content.return_value = response({"selections": [selection]})
@@ -125,8 +127,9 @@ class PipelineTests(unittest.TestCase):
         client.models.generate_content.return_value = response({"selections": [
             {"index": 0, "name": "Công tháo lắp", "item_type": "service"}]})
         mapper = CodebookMapper(codebook_dir=self.root, matcher=GeminiMatcher(client, "test", context_cache_enabled=False))
-        with self.assertRaisesRegex(ValueError, "Vật tư"):
-            mapper.map_item(self.item("phụ tùng lạ", "material"))
+        result = mapper.map_item(self.item("phụ tùng lạ", "material"))  # sai loại -> chưa khớp, không lỗi cả job
+        self.assertEqual((result.method, result.matches), ("unmatched", []))
+        self.assertEqual(mapper.matcher.calls[-1]["invalid_selections"][0]["reason"], "vật tư chỉ được map với item_type part")
 
     def test_only_common_workbook_is_required(self):
         (self.root / "part_codebook.xlsx").unlink()
@@ -140,8 +143,10 @@ class PipelineTests(unittest.TestCase):
         items = [self.item("a", "paint"), self.item("b", "paint")]
         sel = lambda *pairs: response({"selections": [{"index": i, "name": n} for i, n in pairs]})
         client.models.generate_content.return_value = sel((0, "invented"), (1, None))
-        with self.assertRaises(ValueError):  # tên ngoài codebook
-            matcher.select_many(items, ["Sơn cản"])
+        # tên ngoài codebook -> null cho item đó, không làm hỏng cả batch; vẫn ghi lại trong audit
+        self.assertEqual(matcher.select_many(items, ["Sơn cản"]), [None, None])
+        self.assertEqual(matcher.calls[-1]["invalid_selections"],
+                         [{"index": 0, "item": "a", "returned": "invented", "reason": "ngoài codebook"}])
         client.models.generate_content.return_value = sel((0, "Sơn cản"))
         with self.assertRaises(ValueError):  # thiếu index 1
             matcher.select_many(items, ["Sơn cản"])

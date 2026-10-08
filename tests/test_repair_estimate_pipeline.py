@@ -76,6 +76,7 @@ class PipelineRunTests(unittest.TestCase):
         self.assertTrue(all(set(n) == {"name", "item_type"} for n in sent["names"]))
         self.assertEqual(self.client.interactions.create.call_count + self.client.models.generate_content.call_count, 2)  # OCR + one mapping
         run_dir = Path(summary["run_dir"])
+        self.assertEqual(summary["input_sha256"], __import__("hashlib").sha256(self.source.read_bytes()).hexdigest())
         self.assertEqual(summary["status"], "success")
         self.assertEqual(summary["steps"]["ocr"]["items"], 3)
         self.assertEqual(summary["steps"]["mapping"]["methods"], {"gemini": 2, "unmatched": 1})

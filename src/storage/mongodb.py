@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -102,7 +103,8 @@ def build_run_document(run_dir: str | Path) -> dict[str, Any]:
     return {
         "run_id": run_dir.name,
         "created_at": created_at,
-        "input": {"file_name": source_path.name, "file_path": str(source_path)},
+        "input": {"file_name": source_path.name, "file_path": str(source_path),
+                  "sha256": summary.get("input_sha256")},
         "status": summary.get("status", "unknown"),
         "updated_by": "gemini",
         "models": summary.get("models") or {},
@@ -127,6 +129,7 @@ class RepairEstimateRepository:
 
     def ensure_indexes(self) -> None:
         self.collection.create_index([("run_id", ASCENDING)], unique=True, name="run_id_unique")
+        self.collection.create_index([("input.sha256", ASCENDING)], name="input_sha256")
         self.collection.create_index([("document.vehicle_plate", ASCENDING)], name="vehicle_plate")
         self.collection.create_index([("document.estimate_number", ASCENDING)], name="estimate_number")
         self.collection.create_index([("created_at", DESCENDING)], name="created_at_desc")
@@ -162,6 +165,30 @@ class RepairEstimateRepository:
         if include_items:
             projection["items"] = 1
         return list(self.collection.find(query, projection).sort("created_at", DESCENDING).limit(limit))
+
+    def list_history(self, *, limit: int = 20, before: datetime | None = None,
+                     search: str | None = None) -> list[dict[str, Any]]:
+        """Tóm tắt các lần chạy (không kèm items), mới nhất trước; ``before`` là con trỏ ``created_at``."""
+        if limit <= 0:
+            raise ValueError("limit phải lớn hơn 0")
+        query: dict[str, Any] = {}
+        if before is not None:
+            query["created_at"] = {"$lt": before}
+        if search:
+            pattern = {"$regex": re.escape(search.strip()), "$options": "i"}
+            query["$or"] = [{"document.vehicle_plate": pattern}, {"document.estimate_number": pattern},
+                            {"input.file_name": pattern}]
+        projection = {
+            "_id": 0, "run_id": 1, "created_at": 1, "status": 1, "models": 1,
+            "input.file_name": 1, "document.vehicle_plate": 1, "document.estimate_number": 1,
+            "metrics": 1,
+        }
+        return list(self.collection.find(query, projection).sort("created_at", DESCENDING).limit(limit))
+
+    def get_run(self, run_id: str) -> dict[str, Any] | None:
+        """Một lần chạy đầy đủ; bỏ đường dẫn nội bộ của server."""
+        return self.collection.find_one(
+            {"run_id": run_id}, {"_id": 0, "artifacts_path": 0, "input.file_path": 0})
 
     def close(self) -> None:
         if self._owns_client:

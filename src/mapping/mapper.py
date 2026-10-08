@@ -75,8 +75,8 @@ class GeminiMatcher:
             ttl_seconds=int(os.getenv("MAPPING_CONTEXT_CACHE_TTL_SECONDS", "1800")),
         ) if enabled else None
         self.thinking_level = (thinking_level or os.getenv("MAPPING_THINKING_LEVEL") or "LOW").strip().upper()
-        if self.thinking_level not in {"MINIMAL", "LOW", "MEDIUM", "HIGH"}:
-            raise ValueError("MAPPING_THINKING_LEVEL phải là MINIMAL, LOW, MEDIUM hoặc HIGH")
+        if self.thinking_level not in {"LOW", "MEDIUM", "HIGH"}:
+            raise ValueError("MAPPING_THINKING_LEVEL phải là LOW, MEDIUM hoặc HIGH")
         self.calls: list[dict] = []
         self.cache_hits = self.cache_misses = 0  # số item được/không được phục vụ từ cache
 
@@ -92,7 +92,7 @@ class GeminiMatcher:
         context_names = [{"item_type": group, "name": name}
                          for group, entries in names.items() for name in entries] if typed else names
         if self.cache is None:
-            return self._request(items, names)
+            return self._request(items, names)[0]
         schema = WorkBatchSelection if typed else BatchSelection
         context = mapping_context(model=self.model,
             instructions=self.INSTRUCTION + "\ngenerateContent:v1;thinking=" + self.thinking_level + "\n" + json.dumps(schema.model_json_schema(), sort_keys=True),
@@ -113,16 +113,20 @@ class GeminiMatcher:
             else:  # miss, hoặc giá trị cache không còn thuộc codebook
                 missing.setdefault(key, []).append(pos)
         if missing:
-            fresh = self._request([items[positions[0]] for positions in missing.values()], names)
-            for (key, positions), name in zip(missing.items(), fresh):
-                self.cache.set(key, {"name": name})
+            fresh, invalid = self._request([items[positions[0]] for positions in missing.values()], names)
+            for index, ((key, positions), name) in enumerate(zip(missing.items(), fresh)):
+                if index not in invalid:  # tên model trả sai thành null chỉ là tạm thời, không ghi cache
+                    self.cache.set(key, {"name": name})
                 for pos in positions:
                     selected[pos] = name
                 self.cache_misses += len(positions)
         return selected
 
-    def _request(self, items: list[RepairEstimateItem], names: CandidateNames) -> list[Selection]:
-        """Gửi một request Gemini cho ``items`` bằng prompt chung."""
+    def _request(self, items: list[RepairEstimateItem], names: CandidateNames) -> tuple[list[Selection], set[int]]:
+        """Gửi một request Gemini cho ``items`` bằng prompt chung.
+
+        Trả (kết quả, vị trí các item mà model trả tên ngoài codebook); các item đó được đặt null.
+        """
         started = time.perf_counter()
         audit = {"items": [item.raw_name for item in items], "categories": sorted({item.category for item in items}),
                  "prompt": "mapping", "model": self.model, "status": "failed"}
@@ -181,15 +185,21 @@ class GeminiMatcher:
             else:
                 by_index = {s.index: s.name for s in selections}
                 valid = set(names)
-            if any(name is not None and name not in valid for name in by_index.values()):
-                raise ValueError("Gemini trả tên ngoài codebook")
-            if isinstance(names, dict) and any(
-                item.category == "material" and by_index[i] is not None and by_index[i][0] != "part"
-                for i, item in enumerate(items)
-            ):
-                raise ValueError("Vật tư chỉ được map với item_type part")
+            # Lựa chọn không dùng được -> null cho riêng item đó, không làm hỏng cả batch:
+            # tên ngoài codebook (model tự diễn đạt lại) hoặc vật tư bị map sang loại khác ngoài "part".
+            reasons = {i: "ngoài codebook" for i, name in by_index.items() if name is not None and name not in valid}
+            if isinstance(names, dict):
+                reasons.update({i: "vật tư chỉ được map với item_type part" for i, item in enumerate(items)
+                                if i not in reasons and item.category == "material"
+                                and by_index[i] is not None and by_index[i][0] != "part"})
+            invalid = set(reasons)
+            if invalid:
+                audit["invalid_selections"] = [
+                    {"index": i, "item": items[i].raw_name, "returned": by_index[i], "reason": reasons[i]}
+                    for i in sorted(invalid)]
+                by_index = {i: (None if i in invalid else name) for i, name in by_index.items()}
             audit["status"] = "success"
-            return [by_index[i] for i in range(len(items))]
+            return [by_index[i] for i in range(len(items))], invalid
         finally:
             audit.setdefault("cost", estimate_cost(self.model, None))
             context = audit.get("context_cache")
@@ -256,8 +266,9 @@ class CodebookMapper:
                 if not isinstance(name, tuple) or len(name) != 2:
                     raise ValueError("Kết quả mapping thiếu item_type")
                 group, selected_name = name
-                if items[pos].category == "material" and group != "part":
-                    raise ValueError("Vật tư chỉ được map với item_type part")
+                if items[pos].category == "material" and group != "part":  # matcher tùy biến trả sai loại
+                    results[pos] = self._result(items[pos], [], "unmatched")
+                    continue
                 matches = self.work.by_type.get(group, {}).get(selected_name, [])
                 if not matches:
                     raise ValueError(f"Tên/loại trả về không thuộc codebook: {name}")

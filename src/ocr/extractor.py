@@ -112,7 +112,7 @@ def extract_repair_estimate(
     API/validation errors propagate; failed responses remain in the run directory.
     ``run_dir``: thư mục lưu artifacts cố định (mặc định tạo thư mục timestamp trong ``output_dir``).
     ``verbose=False``: không in log (pipeline tự in báo cáo).
-    ``thinking_level``: minimal|low|medium|high; mặc định lấy từ OCR_THINKING_LEVEL (trống = mặc định của model).
+    ``thinking_level``: low|medium|high; mặc định lấy từ OCR_THINKING_LEVEL (trống = mặc định của model).
     ``cache``: đối tượng có ``get(key)``/``set(key, value)``; trúng cache thì không gọi Gemini
     (chỉ kết quả đã qua validate mới được ghi vào cache).
     """
@@ -130,8 +130,8 @@ def extract_repair_estimate(
     if not is_markdown and mime not in SUPPORTED:
         raise ValueError("Định dạng tài liệu không hỗ trợ")
     thinking_level = (thinking_level or os.getenv("OCR_THINKING_LEVEL") or "").strip().lower() or None
-    if thinking_level not in {None, "minimal", "low", "medium", "high"}:
-        raise ValueError("OCR_THINKING_LEVEL phải là minimal, low, medium hoặc high")
+    if thinking_level not in {None, "low", "medium", "high"}:
+        raise ValueError("OCR_THINKING_LEVEL phải là low, medium hoặc high")
     prompt = load_prompt(prompt_path)
     use_inline = file_path.stat().st_size <= INLINE_LIMIT
     input_mode = "markdown_text" if is_markdown else ("inline" if use_inline else "Files API")

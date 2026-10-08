@@ -104,11 +104,15 @@
 
   <!-- MAIN CONTAINER -->
   <main class="flex-1 max-w-[1680px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+    <div class="flex gap-1 mb-5 border-b border-slate-200" role="tablist">
+      <button id="tabAnalyze" type="button" role="tab" class="px-4 py-2.5 text-sm font-semibold border-b-2 -mb-px border-teal-600 text-teal-700">Phân tích</button>
+      <button id="tabHistory" type="button" role="tab" class="px-4 py-2.5 text-sm font-semibold border-b-2 -mb-px border-transparent text-slate-500 hover:text-slate-700">Lịch sử</button>
+    </div>
     <div class="grid grid-cols-1 xl:grid-cols-12 gap-6 xl:gap-8 items-start">
       
       <!-- LEFT COLUMN: INPUT CONTROLS (ONLY UPLOAD) -->
       <div class="xl:col-span-3 xl:sticky xl:top-24 space-y-6">
-        <div class="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-5 sm:p-6 space-y-5">
+        <div id="panelUpload" class="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-5 sm:p-6 space-y-5">
           <div class="flex items-center justify-between border-b border-slate-100 pb-3.5">
             <h2 class="text-base font-bold text-slate-900 flex items-center gap-2">
               <span class="w-6 h-6 rounded-lg bg-teal-50 text-teal-700 flex items-center justify-center text-xs font-bold border border-teal-100">1</span>
@@ -190,6 +194,19 @@
             <p class="text-[11px] text-center text-slate-500">Phân tích lại từ đầu sẽ bỏ qua kết quả đã lưu.</p>
             <p class="text-[11px] text-center text-slate-400">Tự động bóc tách thông tin và đối chiếu mã danh mục phụ tùng chuẩn</p>
           </form>
+        </div>
+
+        <!-- HISTORY PANEL -->
+        <div id="panelHistory" class="hidden bg-white rounded-2xl border border-slate-200/80 shadow-sm p-5 sm:p-6 space-y-4">
+          <div class="flex items-center justify-between border-b border-slate-100 pb-3.5">
+            <h2 class="text-base font-bold text-slate-900">Lịch sử các lần chạy</h2>
+            <span class="text-xs text-slate-400 font-medium">Giờ Việt Nam (GMT+7)</span>
+          </div>
+          <input id="historySearch" type="search" placeholder="Tìm theo biển số, số báo giá, tên file" maxlength="100"
+                 class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 focus:border-teal-500 focus:outline-none">
+          <p id="historyMsg" class="text-xs text-slate-500 hidden"></p>
+          <ul id="historyList" class="space-y-2 max-h-[65vh] overflow-y-auto"></ul>
+          <button id="historyMore" type="button" class="hidden w-full text-xs font-semibold text-teal-700 border border-teal-200 rounded-lg py-2 hover:bg-teal-50">Tải thêm</button>
         </div>
       </div>
 
@@ -438,6 +455,137 @@
       fillSelect('ocrThinking', levels, `Auto (${appConfig.default_ocr_thinking_level || 'mặc định model'})`);
       fillSelect('mappingThinking', levels, `Auto (${appConfig.default_mapping_thinking_level})`);
     }
+
+    // ---- Tab lịch sử: xem lại kết quả các lần chạy trước (giờ Việt Nam) ----
+    const VN_TIME_FORMAT = new Intl.DateTimeFormat('vi-VN', {
+      timeZone: 'Asia/Ho_Chi_Minh', hour12: false, day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+    });
+    const HISTORY_URL = '/api/v1/repair-estimate/runs';
+    let historyBefore = null;
+    let historySelected = null;
+    let historyTimer = null;
+
+    function formatVnTime(iso) {
+      const date = new Date(iso);
+      return Number.isNaN(date.getTime()) ? '—' : VN_TIME_FORMAT.format(date);
+    }
+
+    // Khung trạng thái/kết quả bên phải dùng chung cho hai tab, nên mỗi tab giữ view riêng:
+    // cập nhật của tab đang ẩn (vd. job OCR còn chạy) chỉ được lưu lại, không vẽ đè lên tab đang xem.
+    let activeTab = 'analyze';
+    const tabViews = {analyze: {result: null, status: null}, history: {result: null, status: null}};
+    const IDLE_STATUS = {
+      analyze: ['idle', 'Chọn file báo giá ở bên trái và bấm phân tích để bắt đầu.', 'Sẵn sàng'],
+      history: ['idle', 'Chọn một lần chạy trong danh sách bên trái để xem lại kết quả.', 'Sẵn sàng'],
+    };
+
+    function setStatus(tab, type, msg, timeText = '') {
+      tabViews[tab].status = [type, msg, timeText];
+      if (tab === activeTab) setJobStatus(type, msg, timeText);
+    }
+
+    function showResult(tab, data) {
+      tabViews[tab].result = data;
+      if (tab !== activeTab) return;
+      if (data) renderResult(data); else clearResult();
+    }
+
+    function restoreTabView(tab) {
+      const view = tabViews[tab];
+      if (view.result) renderResult(view.result); else clearResult();
+      setJobStatus(...(view.status || IDLE_STATUS[tab]));
+    }
+
+    function showTab(name) {
+      const history = name === 'history';
+      activeTab = name;
+      restoreTabView(name);
+      $('panelUpload').classList.toggle('hidden', history);
+      $('panelHistory').classList.toggle('hidden', !history);
+      const active = 'px-4 py-2.5 text-sm font-semibold border-b-2 -mb-px border-teal-600 text-teal-700';
+      const idle = 'px-4 py-2.5 text-sm font-semibold border-b-2 -mb-px border-transparent text-slate-500 hover:text-slate-700';
+      $('tabAnalyze').className = history ? idle : active;
+      $('tabHistory').className = history ? active : idle;
+      if (history) loadHistory(true);
+    }
+
+    function historyLine(text, className) {
+      const line = document.createElement('div');
+      line.className = className;
+      line.textContent = text;
+      return line;
+    }
+
+    function styleHistoryItem(button) {
+      button.className = 'w-full text-left rounded-xl border px-3 py-2.5 transition-colors ' + (
+        button.dataset.runId === historySelected ? 'border-teal-500 bg-teal-50/60' : 'border-slate-200 hover:border-teal-300 hover:bg-slate-50');
+    }
+
+    function historyItem(run) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.dataset.runId = run.run_id;
+      styleHistoryItem(button);
+      const title = [run.vehicle_plate, run.estimate_number].filter(Boolean).join(' · ') || run.file_name || run.run_id;
+      const stats = run.item_count == null ? '' :
+        `${run.item_count} hạng mục · ${run.exact_count || 0} exact · ${run.gemini_count || 0} AI · ${run.unmatched_count || 0} chưa khớp`;
+      const cost = run.cost_usd != null ? ` · $${Number(run.cost_usd).toFixed(4)}` : '';
+      button.append(
+        historyLine(title, 'text-xs font-bold text-slate-800 truncate'),
+        historyLine(`${formatVnTime(run.created_at)} · ${run.file_name || ''}`, 'text-[11px] text-slate-500 truncate mt-0.5'),
+        historyLine(stats + cost, 'text-[11px] text-slate-400 mt-0.5'),
+      );
+      if (run.status && run.status !== 'success') {
+        button.append(historyLine(`Trạng thái: ${run.status}`, 'text-[11px] font-semibold text-rose-600 mt-0.5'));
+      }
+      button.addEventListener('click', () => openRun(run.run_id));
+      return button;
+    }
+
+    async function loadHistory(reset) {
+      if (reset) {
+        historyBefore = null;
+        $('historyList').replaceChildren();
+      }
+      const params = new URLSearchParams({limit: '20'});
+      if (historyBefore) params.set('before', historyBefore);
+      const query = $('historySearch').value.trim();
+      if (query) params.set('q', query);
+      const message = $('historyMsg');
+      try {
+        const data = await apiRequest(`${HISTORY_URL}?${params}`);
+        $('historyList').append(...data.runs.map(historyItem));
+        historyBefore = data.next_before;
+        $('historyMore').classList.toggle('hidden', !data.next_before);
+        const empty = !$('historyList').children.length;
+        message.textContent = empty ? 'Chưa có lần chạy nào.' : '';
+        message.classList.toggle('hidden', !empty);
+      } catch (err) {
+        message.textContent = err.message;
+        message.classList.remove('hidden');
+      }
+    }
+
+    async function openRun(runId) {
+      historySelected = runId;
+      try {
+        const run = await apiRequest(`${HISTORY_URL}/${encodeURIComponent(runId)}`);
+        showResult('history', run);
+        setStatus('history', 'success', `Đang xem lần chạy lúc ${formatVnTime(run.created_at)} (giờ Việt Nam).`, 'Lịch sử');
+        Array.from($('historyList').children).forEach(styleHistoryItem);
+      } catch (err) {
+        setStatus('history', 'error', err.message);
+      }
+    }
+
+    $('tabAnalyze').addEventListener('click', () => showTab('analyze'));
+    $('tabHistory').addEventListener('click', () => showTab('history'));
+    $('historyMore').addEventListener('click', () => loadHistory(false));
+    $('historySearch').addEventListener('input', () => {
+      clearTimeout(historyTimer);
+      historyTimer = setTimeout(() => loadHistory(true), 300);
+    });
 
     // Status management
     function setJobStatus(type, msg, timeText = '') {
@@ -697,14 +845,14 @@
       if (!file || $('submit').disabled) return;
       const useCache = e.submitter?.id !== 'rerun';
 
-      clearResult();
+      showResult('analyze', null);
       $('submit').disabled = true;
       $('rerun').disabled = true;
       $('submitIcon').classList.add('hidden');
       $('submitSpinner').classList.remove('hidden');
       $('submitText').textContent = 'Đang gửi tài liệu...';
 
-      setJobStatus('running', 'Đang tải file lên máy chủ...');
+      setStatus('analyze', 'running', 'Đang tải file lên máy chủ...');
 
       try {
         await initConfig();
@@ -741,7 +889,7 @@
           if (state.step === 'storage') stepDesc = 'Đang lưu trữ dữ liệu vào hệ thống...';
           else if (state.step === 'queued') stepDesc = 'Đang xếp hàng chờ worker xử lý...';
 
-          setJobStatus('running', `${stepDesc}\nMã tác vụ: ${job.job_id}`, `${elapsedSec}s`);
+          setStatus('analyze', 'running', `${stepDesc}\nMã tác vụ: ${job.job_id}`, `${elapsedSec}s`);
 
           if (state.status === 'failed') {
             throw new Error(state.error?.message || 'Quá trình phân tích thất bại');
@@ -749,8 +897,8 @@
 
           if (state.status === 'success') {
             const finalResult = await apiRequest(job.result_url);
-            renderResult(finalResult);
-            setJobStatus('success', `Hoàn tất xử lý sau ${elapsedSec} giây.\nMã tác vụ: ${job.job_id}`, `${elapsedSec}s`);
+            showResult('analyze', finalResult);
+            setStatus('analyze', 'success', `Hoàn tất xử lý sau ${elapsedSec} giây.\nMã tác vụ: ${job.job_id}`, `${elapsedSec}s`);
             break;
           }
 
@@ -758,7 +906,7 @@
         }
 
       } catch (err) {
-        setJobStatus('error', 'Lỗi: ' + err.message);
+        setStatus('analyze', 'error', 'Lỗi: ' + err.message);
       } finally {
         $('submit').disabled = false;
         $('rerun').disabled = !$('file').files[0];

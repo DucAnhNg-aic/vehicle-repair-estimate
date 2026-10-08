@@ -92,12 +92,56 @@ class RepairEstimateApiTests(unittest.IsolatedAsyncioTestCase):
         options = self.queue.enqueued[2]
         self.assertEqual((options["ocr_thinking_level"], options["mapping_thinking_level"]), ("high", "low"))
         self.assertEqual((await self.submit({"ocr_thinking_level": "extreme"})).status_code, 422)
+        self.assertEqual((await self.submit({"mapping_thinking_level": "minimal"})).status_code, 422)
 
     async def test_demo_config_lists_models_and_levels(self):
         data = (await self.client.get("/api/v1/repair-estimate/demo-config")).json()
         self.assertEqual(data["models"], ["gemini-3.8-flash"])
-        self.assertEqual(data["thinking_levels"], ["minimal", "low", "medium", "high"])
+        self.assertEqual(data["thinking_levels"], ["low", "medium", "high"])
         self.assertTrue(data["show_ai_options"])
+
+    def fake_history(self, rows=None, run=None):
+        class Repo:
+            def __init__(inner, *args, **kwargs): pass
+            def list_history(inner, **kwargs):
+                self.history_kwargs = kwargs
+                return rows or []
+            def get_run(inner, run_id): return run
+        patch_repo = patch("repair_estimate_api.app.RepairEstimateRepository", Repo)
+        patch_settings = patch("repair_estimate_api.app.MongoSettings")
+        patch_repo.start(); patch_settings.start()
+        self.addCleanup(patch_repo.stop); self.addCleanup(patch_settings.stop)
+
+    async def test_history_list_returns_utc_summaries(self):
+        from datetime import datetime
+        self.fake_history(rows=[{
+            "run_id": "r1", "created_at": datetime(2026, 10, 8, 6, 0, 0), "status": "success",
+            "input": {"file_name": "a.jpg"}, "document": {"vehicle_plate": "30A-1", "estimate_number": "BG1"},
+            "models": {"ocr": "m"},
+            "metrics": {"total": {"duration_seconds": 5.5, "cost": {"total_usd": 0.07}}, "ocr": {"cache_hit": False},
+                        "mapping": {"item_count": 3, "exact_count": 1, "gemini_count": 1, "unmatched_count": 1}},
+        }])
+        response = await self.client.get("/api/v1/repair-estimate/runs?limit=5&q=30A")
+        self.assertEqual(response.status_code, 200)
+        run = response.json()["runs"][0]
+        self.assertTrue(run["created_at"].endswith("Z"), run["created_at"])  # UTC rõ ràng để UI đổi sang giờ VN
+        self.assertEqual((run["vehicle_plate"], run["item_count"], run["cost_usd"]), ("30A-1", 3, 0.07))
+        self.assertEqual(self.history_kwargs["search"], "30A")
+        self.assertIsNone(response.json()["next_before"])  # ít hơn limit: hết trang
+        self.assertEqual((await self.client.get("/api/v1/repair-estimate/runs?limit=0")).status_code, 422)
+
+    async def test_history_detail_and_not_found(self):
+        from datetime import datetime
+        self.fake_history(run={"run_id": "r1", "created_at": datetime(2026, 10, 8, 6, 0, 0), "status": "success",
+                               "document": {}, "items": [], "metrics": {}})
+        response = await self.client.get("/api/v1/repair-estimate/runs/r1")
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["created_at"].endswith("Z"))
+
+    async def test_history_detail_not_found(self):
+        self.fake_history(run=None)
+        response = await self.client.get("/api/v1/repair-estimate/runs/zzz")
+        self.assertEqual((response.status_code, response.json()["detail"]["code"]), (404, "RUN_NOT_FOUND"))
 
     async def test_rejects_unknown_option_and_model(self):
         self.assertEqual((await self.submit({"output_dir": "/tmp"})).status_code, 422)

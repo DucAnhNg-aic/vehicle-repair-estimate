@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from cost import sum_costs
+from llm_cache.keys import file_digest
 from mapping import CodebookMapper, GeminiMatcher
 from mapping.mapper import CODEBOOK_DIR
 from ocr.extractor import OUTPUT_DIR, ROOT as OCR_ROOT, extract_repair_estimate, write_json
@@ -42,7 +43,7 @@ def run_repair_estimate_pipeline(
     run_dir.mkdir(parents=True)
     mapping_model = mapping_model or model
     summary = {
-        "status": "running", "input": str(file_path), "run_dir": str(run_dir),
+        "status": "running", "input": str(file_path), "input_sha256": None, "run_dir": str(run_dir),
         "started_at": started_at.isoformat(), "models": {"ocr": model, "mapping": None if exact_only else mapping_model},
         "steps": {"ocr": {"status": "pending"}, "mapping": {"status": "pending"}},
         "items": [], "total": {}, "error": None,
@@ -50,6 +51,7 @@ def run_repair_estimate_pipeline(
     matcher = None
     started = time.perf_counter()
     try:
+        summary["input_sha256"] = file_digest(file_path)
         # ---- Bước 1: OCR ----
         log(f"[1/2] OCR: {file_path.name} (model {model}) ...", flush=True)
         step_started = time.perf_counter()
@@ -92,6 +94,7 @@ def run_repair_estimate_pipeline(
                 seconds=round(time.perf_counter() - step_started, 3),
                 result=str(run_dir / "mapping.json"),
                 gemini_calls=len(calls),
+                invalid_selections=sum(len(call.get("invalid_selections", [])) for call in calls),
                 context_cache=[call["context_cache"] for call in calls if call.get("context_cache")],
                 cache_hits=matcher.cache_hits if matcher else 0,
                 cache_misses=matcher.cache_misses if matcher else 0,

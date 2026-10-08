@@ -7,7 +7,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
-ThinkingLevel = Literal["minimal", "low", "medium", "high"]
+ThinkingLevel = Literal["low", "medium", "high"]
 
 
 class JobOptions(BaseModel):
@@ -82,3 +82,36 @@ class JobResult(BaseModel):
     items: list[dict[str, Any]]
     metrics: JobMetrics
     storage: StorageResult
+
+
+class RunSummary(BaseModel):
+    run_id: str
+    created_at: datetime  # luôn UTC (có tzinfo); UI tự đổi sang giờ Việt Nam
+    status: str
+    file_name: str | None = None
+    vehicle_plate: str | None = None
+    estimate_number: str | None = None
+    models: dict[str, Any] = Field(default_factory=dict)
+    item_count: int | None = None
+    exact_count: int | None = None
+    gemini_count: int | None = None
+    unmatched_count: int | None = None
+    duration_seconds: float | None = None
+    cost_usd: float | None = None
+    cache_hit: bool | None = None
+
+
+class RunList(BaseModel):
+    runs: list[RunSummary]
+    next_before: datetime | None = None  # truyền lại làm ``before`` để lấy trang kế
+
+
+class RunDetail(BaseModel):
+    run_id: str
+    created_at: datetime
+    status: str
+    models: dict[str, Any] = Field(default_factory=dict)
+    document: dict[str, Any]
+    items: list[dict[str, Any]]
+    metrics: dict[str, Any]
+    error: Any = None
