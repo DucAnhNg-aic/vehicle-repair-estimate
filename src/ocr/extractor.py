@@ -39,8 +39,10 @@ def load_env(path: Path) -> None:
         if not line or line.startswith("#"):
             continue
         key, sep, value = line.partition("=")
-        if sep and key.strip() in {"GEMINI_API_KEY", "GEMINI_MODEL"}:
+        if sep and key.strip() in {"GEMINI_API_KEY", "GEMINI_MODEL", "OCR_MODEL", "MAPPING_MODEL", "OCR_THINKING_LEVEL", "MAPPING_THINKING_LEVEL", "MAPPING_CONTEXT_CACHE_ENABLED", "MAPPING_CONTEXT_CACHE_TTL_SECONDS"}:
             value = value.strip()
+            if value[:1] not in "\"'":  # giá trị không đặt trong dấu nháy: bỏ comment cuối dòng (" # ...")
+                value = value.split(" #", 1)[0].rstrip()
             if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
                 value = value[1:-1]
             os.environ.setdefault(key.strip(), value)
@@ -102,6 +104,7 @@ def extract_repair_estimate(
     prompt_path: str | Path = ROOT / "prompt.py",
     output_dir: str | Path = OUTPUT_DIR, timeout: float = 180,
     run_dir: str | Path | None = None, verbose: bool = True, cache=None,
+    thinking_level: str | None = None,
 ) -> RepairEstimate:
     """Extract and validate OCR; accepts a shared client and preserves run artifacts.
 
@@ -109,6 +112,7 @@ def extract_repair_estimate(
     API/validation errors propagate; failed responses remain in the run directory.
     ``run_dir``: thư mục lưu artifacts cố định (mặc định tạo thư mục timestamp trong ``output_dir``).
     ``verbose=False``: không in log (pipeline tự in báo cáo).
+    ``thinking_level``: minimal|low|medium|high; mặc định lấy từ OCR_THINKING_LEVEL (trống = mặc định của model).
     ``cache``: đối tượng có ``get(key)``/``set(key, value)``; trúng cache thì không gọi Gemini
     (chỉ kết quả đã qua validate mới được ghi vào cache).
     """
@@ -125,6 +129,9 @@ def extract_repair_estimate(
         raise ValueError("Markdown rỗng")
     if not is_markdown and mime not in SUPPORTED:
         raise ValueError("Định dạng tài liệu không hỗ trợ")
+    thinking_level = (thinking_level or os.getenv("OCR_THINKING_LEVEL") or "").strip().lower() or None
+    if thinking_level not in {None, "minimal", "low", "medium", "high"}:
+        raise ValueError("OCR_THINKING_LEVEL phải là minimal, low, medium hoặc high")
     prompt = load_prompt(prompt_path)
     use_inline = file_path.stat().st_size <= INLINE_LIMIT
     input_mode = "markdown_text" if is_markdown else ("inline" if use_inline else "Files API")
@@ -137,7 +144,7 @@ def extract_repair_estimate(
     if cache is not None:
         cache_started = time.perf_counter()
         cache_key = ocr_key(file_path, model=model, prompt=prompt, user_text=OCR_USER_TEXT,
-                            schema=RepairEstimate.model_json_schema())
+                            schema=RepairEstimate.model_json_schema(), thinking_level=thinking_level)
         cached = cache.get(cache_key)
         parsed = _cached_estimate(cached)
         if parsed is not None:
@@ -178,6 +185,7 @@ def extract_repair_estimate(
                     input=[{"type": "text", "text": OCR_USER_TEXT}, media],
                     response_format={"type": "text", "mime_type": "application/json", "schema": RepairEstimate.model_json_schema()},
                     store=False,
+                    **({"generation_config": {"thinking_level": thinking_level}} if thinking_level else {}),
                 )
             response_data = interaction.model_dump(mode="json", exclude_none=True)
             write_json(run_dir / "response.json", response_data)

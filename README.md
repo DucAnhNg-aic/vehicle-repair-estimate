@@ -55,7 +55,8 @@ Chi phí ước tính được in trên terminal và lưu ở `metadata.json.cos
 input không cache, cached input, output và thinking. Thinking tính theo giá
 output, cached tokens được trừ khỏi input thường để không tính hai lần.
 Đây là ước tính Standard paid tier, không xác định key đang dùng free tier
-hay paid tier; không bao gồm thuế, credits hoặc phí lưu cache/tool.
+hay paid tier; không bao gồm thuế, credits hoặc phí tool. Phí lưu explicit
+context cache của mapping được ước tính riêng và cộng vào job tạo cache.
 
 Bảng giá `gemini-3.6-flash` kiểm tra ngày 01/10/2026 tại
 [Google](https://ai.google.dev/gemini-api/docs/pricing#gemini-3.6-flash):
@@ -106,8 +107,7 @@ total = sum_costs([cost_ocr, *cost_mapping_calls])  # total_usd, tokens, complet
 - `POST https://generativelanguage.googleapis.com/v1beta/interactions`:
   phù hợp đọc ảnh/PDF và trả structured JSON; Google khuyến nghị cho dự án mới.
   Dùng `store=False` vì mỗi lần chạy là một yêu cầu độc lập.
-- `models/{model}:generateContent`: vẫn được hỗ trợ, nhưng script này dùng
-  Interactions giống code hiện có ở `GPLX_OCR/Gemini`.
+- `models/{model}:generateContent`: dùng cho mapping với explicit context caching.
 - Files API: upload khi file lớn hơn 15 MiB; chờ ACTIVE trước khi đọc và xóa
   file tạm trong `finally`. File nhỏ gửi base64 inline, không cần upload riêng.
 - `GET /v1beta/models`: dùng qua `--list-models` để kiểm tra model key được truy cập;
@@ -138,14 +138,21 @@ with genai.Client() as client:  # GEMINI_API_KEY từ environment
         print(item.raw_name, [row.code for row in mapped.matches])
 ```
 
-Mapping dùng `raw_name` so sánh **nguyên văn** với `TEN` (phân biệt hoa/thường,
-không bỏ dấu/trim). `labor` và `paint` dùng service codebook; `material` dùng
-part codebook. Exact match trả tất cả dòng có cùng tên, không gọi Gemini.
-Các item không exact được **gộp batch**: mỗi codebook 1 request (service, rồi part;
-chia chunk theo `BATCH_SIZE=50`), gửi các item có `index` cùng danh sách tên duy nhất.
-Gemini trả `selections` đúng đủ index `0..n-1`, mỗi phần tử là một tên hoặc null;
-chương trình tra lại tất cả mã `MA` của tên đó. Tên ngoài danh sách/API lỗi/schema lỗi được raise;
-null trả `unmatched` với `matches=[]`. Không tự chọn gần đúng khi Gemini lỗi.
+Mapping dùng duy nhất `data/codebook/codebook.xlsx` (các cột `MA`, `TEN`, `item_type`)
+và một `MAPPING_INSTRUCTION` chung. Material/labor/paint được gộp chung batch,
+không gọi riêng theo category hoặc part/service. Payload `names` là danh sách
+`{name, item_type}` duy nhất; không gửi mã MA.
+
+- `material`: exact với tên thuộc part trước; chưa khớp thì gửi Gemini cùng các công việc.
+- `labor`/`paint`: có bộ phận trong raw_name thì map part; không có mới map service.
+  Giữ đúng trái/phải, không tìm thấy bộ phận thì unmatched, không chuyển sang dịch vụ chung.
+
+Tối đa 50 item chưa exact mỗi batch; cache loại các item đã có kết quả trước khi gọi.
+Vì vậy không quá 50 item cần mapping thì tối đa một request Gemini cho bước mapping
+(OCR vẫn là bước riêng). Nhiều hơn 50 item vẫn chia batch. Trả đúng thứ tự đầu vào.
+Gemini trả name và item_type; code kiểm tra tên thuộc đúng loại rồi tra tất cả mã
+trùng tên trong loại đó. Material không được trả service. Null trả unmatched.
+Khóa cache bao gồm prompt chung mới và tên/loại codebook, không dùng kết quả prompt cũ.
 
 ```bash
 # OCR độc lập
@@ -159,10 +166,49 @@ PYTHONPATH=src python -m unittest discover -s tests -v
 ```
 
 CLI mapping giữ các trường OCR và thêm `mapping` vào mỗi item, theo đúng thứ tự.
-`mapping.matches` chứa `code`, `name`, `row`; không loại các dòng trùng.
+`mapping.matches` chứa `code`, `name`, `row`, `item_type`; không loại các dòng trùng.
 File `.calls.json` bên cạnh output lưu response/usage và latency từng lời gọi
 Gemini, kể cả khi mapping thất bại. Chạy lại cùng `--output` sẽ ghi đè file đó.
-`CodebookMapper()` không truyền matcher chỉ chạy exact, phù hợp test offline.
+`CodebookMapper()` không truyền matcher (hoặc CLI `--exact-only`) chỉ exact vật tư;
+nhân công/sơn trả unmatched vì cần Gemini xác định bộ phận/dịch vụ.
+
+## Explicit context cache cho mapping
+
+Mapping dùng `client.models.generate_content`; OCR vẫn dùng Interactions API.
+Khi có item cần gọi Gemini, tạo hoặc dùng lại cache Google chứa `MAPPING_INSTRUCTION`
+và danh sách unique `{name, item_type}` của `codebook.xlsx`. Mỗi request mới chỉ gửi
+items + `cached_content` + schema đầu ra; codebook và prompt không gửi lại.
+
+Cấu hình server qua `.env` (không phải option UI):
+
+```dotenv
+MAPPING_CONTEXT_CACHE_ENABLED=true
+MAPPING_CONTEXT_CACHE_TTL_SECONDS=1800
+```
+
+Mặc định bật, TTL 30 phút. Cache tạo khi cần và không tự gia hạn. Đổi model, prompt,
+danh sách tên/loại, schema hoặc API key tạo cache mới; cache cũ tự hết hạn trên Google.
+Registry và khóa tạo nằm trong `outputs/.gemini_context_cache/`, dùng chung volume
+outputs giữa các job/worker trên cùng host. Không tạo lại cache sau mỗi job.
+Đây là cache Google độc lập với cache kết quả Redis/Mongo: option API `use_cache`
+điều khiển cache kết quả; biến server trên điều khiển context cache.
+Xóa Mongo/Redis không xóa Google context cache hoặc registry trong outputs.
+
+Lỗi tạo context cache thì cảnh báo và gửi đầy đủ codebook bằng generateContent.
+Cache Google bị xóa sớm (404) thì bỏ registry và retry một lần bằng đầy đủ context.
+Lỗi request khác được raise; response bị chặn/truncated không được ghi cache kết quả.
+
+`mapping.calls.json` ghi `endpoint`, `context_cache`, response và token usage.
+API/Mongo có `metrics.mapping.context_cache`: tên cache, expire_time, created,
+token_count, ttl_seconds và storage_estimated_usd. Token cache nằm trong
+`cost.tokens.total_cached_tokens`. Phí lưu `context_cache_storage_usd` được ước tính
+cho toàn bộ TTL, cộng một lần vào cost của job tạo cache; job dùng lại không cộng lần nữa.
+Đây là phân bổ chi phí dự kiến, không phải hóa đơn theo thời gian lưu thực tế.
+Nếu thiếu số token/giá thì cost có `complete=false`. Phí lưu vẫn có thể phát sinh
+khi request mapping lỗi. Context caching không bảo đảm giảm thinking token/latency.
+
+Tài liệu: [Explicit caching](https://ai.google.dev/gemini-api/docs/generate-content/caching),
+[generateContent](https://ai.google.dev/api/generate-content).
 
 ## Lưu và xem kết quả bằng MongoDB
 

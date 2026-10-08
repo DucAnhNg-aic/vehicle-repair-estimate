@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from openpyxl import Workbook
 
@@ -20,7 +20,7 @@ MAP_USAGE = {"total_input_tokens": 30000, "total_cached_tokens": 0,
 
 
 def response(payload, usage):
-    return SimpleNamespace(status="completed", output_text=json.dumps(payload, ensure_ascii=False),
+    return SimpleNamespace(text=json.dumps(payload, ensure_ascii=False), candidates=[SimpleNamespace(finish_reason="STOP")], status="completed", output_text=json.dumps(payload, ensure_ascii=False),
                            model_dump=lambda **kwargs: {"status": "completed", "model": MODEL, "usage": usage})
 
 
@@ -45,10 +45,19 @@ class PipelineRunTests(unittest.TestCase):
             for row in rows:
                 w.active.append(row)
             w.save(self.root / f"{prefix}_codebook.xlsx")
+        w = Workbook()
+        w.active.append(["MA", "TEN", "item_type"])
+        w.active.append(["S1", "Cản", "part"])
+        w.active.append(["P1", "Cản trước", "part"])
+        w.active.append(["P2", "Cản trước", "part"])
+        w.save(self.root / "codebook.xlsx")
         self.source = self.root / "bao_gia.md"
         self.source.write_text("Báo giá")
         self.estimate = repair_estimate(("Sơn cản", "paint"), ("Nẹp cản trước", "material"), ("Không có", "labor"))
         self.client = Mock()
+        self.context_env = patch.dict("os.environ", {"MAPPING_CONTEXT_CACHE_ENABLED": "false"})
+        self.context_env.start()
+        self.addCleanup(self.context_env.stop)
 
     def run_vre_pipeline(self, **kwargs):
         return run_repair_estimate_pipeline(
@@ -57,25 +66,28 @@ class PipelineRunTests(unittest.TestCase):
         )
 
     def test_full_run_logs_results_and_costs_per_step(self):
-        self.client.interactions.create.side_effect = [
-            response(self.estimate.model_dump(mode="json"), OCR_USAGE),  # OCR
-            response({"selections": [{"index": 0, "name": None}]}, MAP_USAGE),            # 1 request service: Không có
-            response({"selections": [{"index": 0, "name": "Cản trước"}]}, MAP_USAGE),     # 1 request part: Nẹp cản trước
+        self.client.interactions.create.return_value = response(self.estimate.model_dump(mode="json"), OCR_USAGE)
+        self.client.models.generate_content.side_effect = [
+            response({"selections": [{"index": 0, "name": "Cản", "item_type": "part"}, {"index": 1, "name": "Cản trước", "item_type": "part"}, {"index": 2, "name": None, "item_type": None}]}, MAP_USAGE),            # 1 request service: Không có
         ]
         summary = self.run_vre_pipeline()
+        sent = json.loads(self.client.models.generate_content.call_args.kwargs["contents"])
+        self.assertEqual([i["category"] for i in sent["items"]], ["paint", "material", "labor"])
+        self.assertTrue(all(set(n) == {"name", "item_type"} for n in sent["names"]))
+        self.assertEqual(self.client.interactions.create.call_count + self.client.models.generate_content.call_count, 2)  # OCR + one mapping
         run_dir = Path(summary["run_dir"])
         self.assertEqual(summary["status"], "success")
         self.assertEqual(summary["steps"]["ocr"]["items"], 3)
-        self.assertEqual(summary["steps"]["mapping"]["methods"], {"exact": 1, "gemini": 1, "unmatched": 1})
-        self.assertEqual(summary["steps"]["mapping"]["gemini_calls"], 2)
+        self.assertEqual(summary["steps"]["mapping"]["methods"], {"gemini": 2, "unmatched": 1})
+        self.assertEqual(summary["steps"]["mapping"]["gemini_calls"], 1)
         self.assertEqual([i["codes"] for i in summary["items"]], [["S1"], ["P1", "P2"], []])
         ocr_cost = cost_from_response({"model": MODEL, "usage": OCR_USAGE}, MODEL)["total_usd"]
-        map_cost = 2 * cost_from_response({"model": MODEL, "usage": MAP_USAGE}, MODEL)["total_usd"]
+        map_cost = 1 * cost_from_response({"model": MODEL, "usage": MAP_USAGE}, MODEL)["total_usd"]
         self.assertAlmostEqual(summary["steps"]["ocr"]["cost"]["total_usd"], ocr_cost)
         self.assertAlmostEqual(summary["steps"]["mapping"]["cost"]["total_usd"], map_cost)
         total = summary["total"]["cost"]
         self.assertAlmostEqual(total["total_usd"], ocr_cost + map_cost)
-        self.assertEqual((total["calls"], total["priced_calls"], total["complete"]), (3, 3, True))
+        self.assertEqual((total["calls"], total["priced_calls"], total["complete"]), (2, 2, True))
         for name in ["summary.json", "report.txt", "mapping.json", "mapping.calls.json", "ocr/result.json"]:
             self.assertTrue((run_dir / name).is_file(), name)
         self.assertEqual(json.loads((run_dir / "summary.json").read_text())["status"], "success")
@@ -87,7 +99,7 @@ class PipelineRunTests(unittest.TestCase):
         self.client.interactions.create.return_value = response(self.estimate.model_dump(mode="json"), OCR_USAGE)
         summary = self.run_vre_pipeline(exact_only=True)
         self.assertEqual(self.client.interactions.create.call_count, 1)
-        self.assertEqual(summary["steps"]["mapping"]["methods"], {"exact": 1, "unmatched": 2})
+        self.assertEqual(summary["steps"]["mapping"]["methods"], {"unmatched": 3})
         self.assertEqual(summary["steps"]["mapping"]["cost"]["calls"], 0)
         self.assertEqual(summary["total"]["cost"]["calls"], 1)
 

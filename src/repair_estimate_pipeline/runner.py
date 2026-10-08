@@ -32,6 +32,7 @@ def run_repair_estimate_pipeline(
     exact_only: bool = False, output_dir: str | Path = REPAIR_ESTIMATE_OUTPUT_DIR,
     codebook_dir: str | Path = CODEBOOK_DIR, prompt_path: str | Path = OCR_ROOT / "prompt.py",
     timeout: float = 180, verbose: bool = True, cache=None,
+    ocr_thinking_level: str | None = None, mapping_thinking_level: str | None = None,
 ) -> dict:
     """Chạy OCR rồi mapping; trả về summary (cũng được ghi ra ``summary.json``)."""
     log = print if verbose else (lambda *args, **kwargs: None)
@@ -54,7 +55,8 @@ def run_repair_estimate_pipeline(
         step_started = time.perf_counter()
         try:
             estimate = extract_repair_estimate(file_path, model=model, client=client, prompt_path=prompt_path,
-                                               run_dir=run_dir / "ocr", timeout=timeout, verbose=False, cache=cache)
+                                               run_dir=run_dir / "ocr", timeout=timeout, verbose=False, cache=cache,
+                                               thinking_level=ocr_thinking_level)
         finally:
             metadata_path = run_dir / "ocr" / "metadata.json"
             metadata = json.loads(metadata_path.read_text(encoding="utf-8")) if metadata_path.is_file() else {}
@@ -72,7 +74,8 @@ def run_repair_estimate_pipeline(
         log(f"[2/2] Mapping: {len(estimate.items)} hạng mục "
             f"({'exact-only' if exact_only else f'exact + Gemini fallback {mapping_model}'}) ...", flush=True)
         step_started = time.perf_counter()
-        matcher = None if exact_only else GeminiMatcher(client, mapping_model, cache=cache)
+        matcher = None if exact_only else GeminiMatcher(client, mapping_model, cache=cache, thinking_level=mapping_thinking_level,
+            context_cache_dir=Path(output_dir) / ".gemini_context_cache")
         mapper = CodebookMapper(matcher=matcher, codebook_dir=codebook_dir)
         try:
             results = mapper.map_repair_estimate(estimate)
@@ -89,6 +92,7 @@ def run_repair_estimate_pipeline(
                 seconds=round(time.perf_counter() - step_started, 3),
                 result=str(run_dir / "mapping.json"),
                 gemini_calls=len(calls),
+                context_cache=[call["context_cache"] for call in calls if call.get("context_cache")],
                 cache_hits=matcher.cache_hits if matcher else 0,
                 cache_misses=matcher.cache_misses if matcher else 0,
                 cost=sum_costs(call["cost"] for call in calls),

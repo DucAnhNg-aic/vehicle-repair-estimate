@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def response(payload, status="completed"):
-    return SimpleNamespace(status=status, output_text=json.dumps(payload, ensure_ascii=False),
+    return SimpleNamespace(text=json.dumps(payload, ensure_ascii=False), candidates=[SimpleNamespace(finish_reason="STOP")], status=status, output_text=json.dumps(payload, ensure_ascii=False),
                            model_dump=lambda **kwargs: {"status": status, "usage": {}})
 
 
@@ -31,109 +31,148 @@ class PipelineTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
-        for prefix, rows in [("service", [("S1", "Sơn cản"), ("S2", "Sơn cản")]),
-                             ("part", [("P1", "Sơn cản"), ("P2", "Cản trước")])]:
-            w = Workbook()
-            w.active.append(["MA", "TEN"])
-            for row in rows:
-                w.active.append(row)
-            w.save(self.root / f"{prefix}_codebook.xlsx")
+        w = Workbook()
+        w.active.append(["MA", "TEN"])
+        w.active.append(["P1", "Cản trước"])
+        w.save(self.root / "part_codebook.xlsx")
+        w = Workbook()
+        w.active.append(["MA", "TEN", "item_type"])
+        for row in [("P1", "Cản trước", "part"), ("L1", "Vè trước trái", "part"), ("L2", "Vè trước trái", "part"),
+                    ("R1", "Vè trước phải", "part"), ("D1", "Cánh cửa", "part"),
+                    ("S1", "Công tháo lắp", "service"),
+                    ("S2", "Công tháo lắp vè trước trái", "service"),
+                    ("S3", "Cánh cửa", "service")]:
+            w.active.append(row)
+        w.save(self.root / "codebook.xlsx")
 
     def item(self, name, category):
         return self.estimate.items[0].model_copy(update={"raw_name": name, "category": category})
 
-    def test_exact_duplicates_and_routing_without_fallback(self):
+    def test_material_exact_and_work_always_goes_to_gemini(self):
         matcher = Mock()
+        matcher.select_many.return_value = [("part", "Vè trước trái")]
         mapper = CodebookMapper(codebook_dir=self.root, matcher=matcher)
-        for category in ["labor", "paint"]:
-            result = mapper.map_item(self.item("Sơn cản", category))
-            self.assertEqual([m.code for m in result.matches], ["S1", "S2"])
-            self.assertEqual(result.method, "exact")
-        self.assertEqual(mapper.map_item(self.item("Sơn cản", "material")).matches[0].code, "P1")
+        result = mapper.map_item(self.item("Cản trước", "material"))
+        self.assertEqual(result.matches[0].code, "P1")
         matcher.select_many.assert_not_called()
-
-    def test_fallback_names_and_duplicate_expansion(self):
-        matcher = Mock()
-        matcher.select_many.return_value = ["Sơn cản"]
-        mapper = CodebookMapper(codebook_dir=self.root, matcher=matcher)
-        result = mapper.map_item(self.item("sơn lại cản", "paint"))
+        result = mapper.map_item(self.item("Công tháo lắp vè trước trái", "labor"))
         self.assertEqual(result.method, "gemini")
-        self.assertEqual(len(result.matches), 2)
-        self.assertEqual(matcher.select_many.call_args.args[1], ["Sơn cản"])
-        matcher.select_many.return_value = [None]
-        self.assertEqual(mapper.map_item(self.item("unknown", "material")).method, "unmatched")
-        self.assertEqual(matcher.select_many.call_args.args[1], ["Sơn cản", "Cản trước"])
-        matcher.select_many.return_value = ["invented"]
-        with self.assertRaises(ValueError):
-            mapper.map_item(self.item("unknown", "material"))
+        self.assertEqual(result.codebook, "codebook.xlsx")
+        self.assertEqual([m.code for m in result.matches], ["L1", "L2"])
+        self.assertTrue(all(m.item_type == "part" for m in result.matches))
+        names = matcher.select_many.call_args.args[1]
+        self.assertIn("Vè trước trái", names["part"])
+        self.assertIn("Công tháo lắp", names["service"])
 
-    def test_batch_sends_one_request_per_codebook_and_keeps_order(self):
+    def test_typed_results_do_not_expand_into_other_type(self):
         matcher = Mock()
-        matcher.select_many.side_effect = lambda items, names: [
-            "Sơn cản" if i.raw_name == "sơn lại cản" else None for i in items]
+        matcher.select_many.return_value = [("part", "Cánh cửa"), ("service", "Công tháo lắp"), None]
         mapper = CodebookMapper(codebook_dir=self.root, matcher=matcher)
-        items = [self.item("sơn lại cản", "paint"), self.item("Sơn cản", "labor"), self.item("không có", "labor"),
-                 self.item("Cản trước", "material"), self.item("lạ", "material"), self.item("sơn lại cản", "labor")]
-        results = mapper.map_items(items)
-        self.assertEqual([r.method for r in results], ["gemini", "exact", "unmatched", "exact", "unmatched", "gemini"])
-        self.assertEqual([r.raw_name for r in results], [i.raw_name for i in items])
-        self.assertEqual(matcher.select_many.call_count, 2)  # service (3 item) + part (1 item), không gọi lẻ
-        service_call, part_call = matcher.select_many.call_args_list
-        self.assertEqual([i.raw_name for i in service_call.args[0]], ["sơn lại cản", "không có", "sơn lại cản"])
-        self.assertEqual([i.raw_name for i in part_call.args[0]], ["lạ"])
+        results = mapper.map_items([self.item("Công sơn cánh cửa", "paint"),
+                                   self.item("Công tháo lắp phục vụ sơn", "labor"),
+                                   self.item("Sơn bộ phận không có", "paint")])
+        self.assertEqual([[r.code for r in x.matches] for x in results], [["D1"], ["S1"], []])
+        self.assertEqual(results[2].method, "unmatched")
 
-    def test_batch_is_chunked_by_batch_size(self):
+    def test_batch_order_and_chunks(self):
         matcher = Mock()
         matcher.select_many.side_effect = lambda items, names: [None] * len(items)
         mapper = CodebookMapper(codebook_dir=self.root, matcher=matcher)
         mapper.BATCH_SIZE = 2
-        results = mapper.map_items([self.item(f"lạ {n}", "paint") for n in range(5)])
+        items = [self.item(f"lạ {i}", "paint") for i in range(5)] + [self.item("Cản trước", "material")]
+        results = mapper.map_items(items)
         self.assertEqual([len(c.args[0]) for c in matcher.select_many.call_args_list], [2, 2, 1])
-        self.assertEqual(len(results), 5)
+        self.assertEqual([r.raw_name for r in results], [i.raw_name for i in items])
+        self.assertEqual(results[-1].method, "exact")
 
-    def test_no_matcher_leaves_unmatched_without_calls(self):
-        results = CodebookMapper(codebook_dir=self.root).map_items([self.item("lạ", "paint"), self.item("Sơn cản", "paint")])
-        self.assertEqual([r.method for r in results], ["unmatched", "exact"])
+    def test_without_matcher_work_is_unmatched(self):
+        result = CodebookMapper(codebook_dir=self.root).map_item(self.item("Công tháo lắp", "labor"))
+        self.assertEqual(result.method, "unmatched")
+
+    def test_missing_or_invalid_item_type_fails(self):
+        w = Workbook()
+        w.active.append(["MA", "TEN"])
+        w.active.append(["1", "Cản"])
+        w.save(self.root / "codebook.xlsx")
+        with self.assertRaisesRegex(ValueError, "item_type"):
+            CodebookMapper(codebook_dir=self.root)
+        w.active.cell(1, 3, "item_type")
+        w.active.cell(2, 3, "unknown")
+        w.save(self.root / "codebook.xlsx")
+        with self.assertRaisesRegex(ValueError, "item_type"):
+            CodebookMapper(codebook_dir=self.root)
+
+    def test_work_schema_checks_type_name_and_indexes(self):
+        client = Mock()
+        matcher = GeminiMatcher(client, "test", context_cache_enabled=False)
+        names = {"part": ["Cánh cửa"], "service": ["Công tháo lắp"]}
+        items = [self.item("Công sơn cánh cửa", "paint")]
+        for selection in [dict(index=0, name="Cánh cửa", item_type="service"),
+                          dict(index=0, name="Cánh cửa", item_type=None),
+                          dict(index=0, name=None, item_type="part"),
+                          dict(index=1, name="Cánh cửa", item_type="part")]:
+            client.models.generate_content.return_value = response({"selections": [selection]})
+            with self.assertRaises(ValueError):
+                matcher.select_many(items, names)
+        client.models.generate_content.return_value = response({"selections": [dict(index=0, name="Cánh cửa", item_type="part")]})
+        self.assertEqual(matcher.select_many(items, names), [("part", "Cánh cửa")])
+        sent = json.loads(client.models.generate_content.call_args.kwargs["contents"])
+        self.assertEqual(sent["names"], [{"name": n, "item_type": k} for k, ns in names.items() for n in ns])
+        self.assertEqual(sent["items"][0]["raw_name"], "Công sơn cánh cửa")
+
+    def test_material_cannot_select_service(self):
+        client = Mock()
+        client.models.generate_content.return_value = response({"selections": [
+            {"index": 0, "name": "Công tháo lắp", "item_type": "service"}]})
+        mapper = CodebookMapper(codebook_dir=self.root, matcher=GeminiMatcher(client, "test", context_cache_enabled=False))
+        with self.assertRaisesRegex(ValueError, "Vật tư"):
+            mapper.map_item(self.item("phụ tùng lạ", "material"))
+
+    def test_only_common_workbook_is_required(self):
+        (self.root / "part_codebook.xlsx").unlink()
+        result = CodebookMapper(codebook_dir=self.root).map_item(self.item("Cản trước", "material"))
+        self.assertEqual(result.codebook, "codebook.xlsx")
+        self.assertEqual(result.matches[0].code, "P1")
 
     def test_gemini_batch_validation(self):
         client = Mock()
-        matcher = GeminiMatcher(client, "test")
+        matcher = GeminiMatcher(client, "test", context_cache_enabled=False)
         items = [self.item("a", "paint"), self.item("b", "paint")]
         sel = lambda *pairs: response({"selections": [{"index": i, "name": n} for i, n in pairs]})
-        client.interactions.create.return_value = sel((0, "invented"), (1, None))
+        client.models.generate_content.return_value = sel((0, "invented"), (1, None))
         with self.assertRaises(ValueError):  # tên ngoài codebook
             matcher.select_many(items, ["Sơn cản"])
-        client.interactions.create.return_value = sel((0, "Sơn cản"))
+        client.models.generate_content.return_value = sel((0, "Sơn cản"))
         with self.assertRaises(ValueError):  # thiếu index 1
             matcher.select_many(items, ["Sơn cản"])
-        client.interactions.create.return_value = sel((0, "Sơn cản"), (0, None))
+        client.models.generate_content.return_value = sel((0, "Sơn cản"), (0, None))
         with self.assertRaises(ValueError):  # trùng index, thiếu index 1
             matcher.select_many(items, ["Sơn cản"])
-        client.interactions.create.return_value = sel((1, None), (0, "Sơn cản"))  # đảo thứ tự vẫn đúng
+        client.models.generate_content.return_value = sel((1, None), (0, "Sơn cản"))  # đảo thứ tự vẫn đúng
         self.assertEqual(matcher.select_many(items, ["Sơn cản"]), ["Sơn cản", None])
-        self.assertEqual(client.interactions.create.call_count, 4)
+        self.assertEqual(client.models.generate_content.call_count, 4)
         self.assertEqual(len(matcher.calls), 4)
         self.assertEqual(matcher.calls[-1]["items"], ["a", "b"])
         self.assertEqual(matcher.calls[-1]["status"], "success")
 
     def test_prompt_per_codebook(self):
-        from mapping.prompt import PART_INSTRUCTION, SERVICE_INSTRUCTION
+        from mapping.prompt import MAPPING_INSTRUCTION
         client = Mock()
-        matcher = GeminiMatcher(client, "test")
-        client.interactions.create.return_value = response({"selections": [{"index": 0, "name": None}]})
+        matcher = GeminiMatcher(client, "test", context_cache_enabled=False)
+        client.models.generate_content.return_value = response({"selections": [{"index": 0, "name": None}]})
         matcher.select_many([self.item("x", "material")], ["Cản"])
-        self.assertEqual(client.interactions.create.call_args.kwargs["system_instruction"], PART_INSTRUCTION)
-        matcher.select_many([self.item("x", "paint")], ["Sơn cản"])
-        self.assertEqual(client.interactions.create.call_args.kwargs["system_instruction"], SERVICE_INSTRUCTION)
-        self.assertEqual([c["prompt"] for c in matcher.calls], ["part", "service"])
-        self.assertNotEqual(PART_INSTRUCTION, SERVICE_INSTRUCTION)
+        self.assertEqual(client.models.generate_content.call_args.kwargs["config"].system_instruction, MAPPING_INSTRUCTION)
+        client.models.generate_content.return_value = response({"selections": [{"index": 0, "name": None, "item_type": None}]})
+        matcher.select_many([self.item("x", "paint")], {"part": ["Cản"], "service": ["Công sơn"]})
+        self.assertEqual(client.models.generate_content.call_args.kwargs["config"].system_instruction, MAPPING_INSTRUCTION)
+        self.assertEqual([c["prompt"] for c in matcher.calls], ["mapping", "mapping"])
 
     def test_gemini_single_select_and_null(self):
         client = Mock()
-        matcher = GeminiMatcher(client, "test")
-        client.interactions.create.return_value = response({"selections": [{"index": 0, "name": None}]})
+        matcher = GeminiMatcher(client, "test", context_cache_enabled=False)
+        client.models.generate_content.return_value = response({"selections": [{"index": 0, "name": None}]})
         self.assertIsNone(matcher.select(self.item("unknown", "paint"), ["Sơn cản"]))
-        sent = json.loads(client.interactions.create.call_args.kwargs["input"])
+        sent = json.loads(client.models.generate_content.call_args.kwargs["contents"])
         self.assertEqual([i["index"] for i in sent["items"]], [0])
 
     def test_ocr_api_preserves_artifacts_and_client(self):

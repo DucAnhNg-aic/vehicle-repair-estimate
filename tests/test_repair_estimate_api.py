@@ -86,6 +86,19 @@ class RepairEstimateApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(server["env_file"], str(self.settings.env_file))
         self.assertEqual(kwargs["meta"]["sha256"], "6105d6cc76af400325e94d588ce511be5bfdbb73b437dc51eca43917d7a43e3d")
 
+    async def test_thinking_levels_are_forwarded_and_validated(self):
+        response = await self.submit({"ocr_thinking_level": "high", "mapping_thinking_level": "low"})
+        self.assertEqual(response.status_code, 202)
+        options = self.queue.enqueued[2]
+        self.assertEqual((options["ocr_thinking_level"], options["mapping_thinking_level"]), ("high", "low"))
+        self.assertEqual((await self.submit({"ocr_thinking_level": "extreme"})).status_code, 422)
+
+    async def test_demo_config_lists_models_and_levels(self):
+        data = (await self.client.get("/api/v1/repair-estimate/demo-config")).json()
+        self.assertEqual(data["models"], ["gemini-3.8-flash"])
+        self.assertEqual(data["thinking_levels"], ["minimal", "low", "medium", "high"])
+        self.assertTrue(data["show_ai_options"])
+
     async def test_rejects_unknown_option_and_model(self):
         self.assertEqual((await self.submit({"output_dir": "/tmp"})).status_code, 422)
         self.assertEqual((await self.submit({"ocr_model": "other"})).status_code, 422)
@@ -124,7 +137,7 @@ class RepairEstimateApiTests(unittest.IsolatedAsyncioTestCase):
                 "mapping": {
                     "duration_seconds": 0.07, "cost": {}, "item_count": 1,
                     "exact_count": 0, "gemini_count": 1, "unmatched_count": 0,
-                    "cache_hits": 1, "cache_misses": 0, "gemini_calls": 0,
+                    "cache_hits": 1, "cache_misses": 0, "gemini_calls": 0, "context_cache": [],
                 },
             },
             "storage": {"saved": True, "run_id": "run-1"},

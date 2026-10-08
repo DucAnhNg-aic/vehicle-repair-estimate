@@ -7,11 +7,16 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
+ThinkingLevel = Literal["minimal", "low", "medium", "high"]
+
+
 class JobOptions(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     ocr_model: str | None = None
     mapping_model: str | None = None
+    ocr_thinking_level: ThinkingLevel | None = None  # None = auto: theo cấu hình server
+    mapping_thinking_level: ThinkingLevel | None = None
     use_cache: bool = True
     save_mongodb: bool = True
     timeout_seconds: float = Field(default=180, ge=10, le=600)
@@ -56,6 +61,7 @@ class MappingMetrics(StepMetrics):
     cache_hits: int
     cache_misses: int
     gemini_calls: int
+    context_cache: list[dict] = Field(default_factory=list)
 
 
 class JobMetrics(BaseModel):

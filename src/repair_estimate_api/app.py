@@ -52,6 +52,11 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
     @app.get("/api/v1/repair-estimate/demo-config")
     async def demo_config() -> dict:
         return {"models": sorted(settings.allowed_models), "default_model": settings.default_model,
+                "default_mapping_model": settings.default_mapping_model or settings.default_model,
+                "thinking_levels": ["minimal", "low", "medium", "high"],
+                "default_ocr_thinking_level": settings.default_ocr_thinking_level,
+                "default_mapping_thinking_level": settings.default_mapping_thinking_level or "low",
+                "show_ai_options": settings.show_ai_options,
                 "max_upload_bytes": settings.max_upload_bytes}
 
     @app.get("/health/live")
@@ -94,7 +99,7 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
         except ValidationError as exc:
             raise _error(status.HTTP_422_UNPROCESSABLE_CONTENT, "INVALID_OPTIONS", str(exc)) from exc
         ocr_model = parsed.ocr_model or settings.default_model
-        mapping_model = parsed.mapping_model or ocr_model
+        mapping_model = parsed.mapping_model or settings.default_mapping_model or ocr_model
         invalid_models = {ocr_model, mapping_model} - settings.allowed_models
         if invalid_models:
             raise _error(status.HTTP_422_UNPROCESSABLE_CONTENT, "MODEL_NOT_ALLOWED", "Model không nằm trong allowlist")
@@ -113,7 +118,11 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
                     handle.write(chunk)
             if size == 0:
                 raise _error(status.HTTP_422_UNPROCESSABLE_CONTENT, "EMPTY_FILE", "File rỗng")
-            payload = parsed.model_copy(update={"ocr_model": ocr_model, "mapping_model": mapping_model}).model_dump()
+            payload = parsed.model_copy(update={
+                "ocr_model": ocr_model, "mapping_model": mapping_model,
+                "ocr_thinking_level": parsed.ocr_thinking_level or settings.default_ocr_thinking_level,
+                "mapping_thinking_level": parsed.mapping_thinking_level or settings.default_mapping_thinking_level,
+            }).model_dump()
             server = {
                 "env_file": str(settings.env_file),
                 "output_dir": str(settings.output_dir),

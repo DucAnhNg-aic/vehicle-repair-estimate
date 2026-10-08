@@ -43,17 +43,20 @@ def file_digest(path: str | Path) -> str:
     return digest.hexdigest()
 
 
-def ocr_key(file_path: str | Path, *, model: str, prompt: str, user_text: str, schema: dict) -> str:
-    """Khóa cache OCR: nội dung file + model + prompt + câu lệnh người dùng + schema."""
+def ocr_key(file_path: str | Path, *, model: str, prompt: str, user_text: str, schema: dict,
+            thinking_level: str | None = None) -> str:
+    """Khóa cache OCR: nội dung file + model + mức thinking + prompt + câu lệnh người dùng + schema."""
     payload = {
         "kind": "ocr", "version": KEY_VERSION, "file": file_digest(file_path), "model": model,
         "prompt": _sha256(prompt.encode("utf-8")), "user_text": user_text,
         "schema": _sha256(_canonical(schema)),
     }
+    if thinking_level:  # chỉ thêm khi đặt mức: giữ nguyên khóa cũ nếu dùng mặc định của model
+        payload["thinking_level"] = thinking_level
     return "ocr:" + _sha256(_canonical(payload))
 
 
-def mapping_context(*, model: str, instructions: str, names: Iterable[str]) -> str:
+def mapping_context(*, model: str, instructions: str, names: Iterable[str | dict[str, str]]) -> str:
     """Phần dùng chung cho cả batch mapping; tính một lần rồi truyền cho ``mapping_key``."""
     payload = {
         "version": KEY_VERSION, "model": model, "instructions": _sha256(instructions.encode("utf-8")),

@@ -34,6 +34,8 @@ def _load_cache_env(path: Path) -> None:
         if not separator or key not in _ALLOWED_ENV:
             continue
         value = value.strip()
+        if value[:1] not in "\"'":  # giá trị không đặt trong dấu nháy: bỏ comment cuối dòng (" # ...")
+            value = value.split(" #", 1)[0].rstrip()
         if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
             value = value[1:-1]
         os.environ.setdefault(key, value)

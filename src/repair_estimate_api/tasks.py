@@ -62,6 +62,8 @@ def process_repair_estimate_job(file_path: str, options: dict, server: dict) -> 
                 timeout=options["timeout_seconds"],
                 verbose=False,
                 cache=cache,
+                ocr_thinking_level=options.get("ocr_thinking_level"),
+                mapping_thinking_level=options.get("mapping_thinking_level"),
             )
             saved = None
             if repository is not None:

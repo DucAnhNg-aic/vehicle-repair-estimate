@@ -18,8 +18,8 @@ from .runner import REPAIR_ESTIMATE_OUTPUT_DIR, run_repair_estimate_pipeline
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("file", type=Path, help="Ảnh/PDF/Markdown báo giá.")
-    parser.add_argument("--model", help="Model OCR; ưu tiên hơn GEMINI_MODEL trong env/.env.")
-    parser.add_argument("--mapping-model", help="Model cho Gemini fallback của mapping; mặc định giống --model.")
+    parser.add_argument("--model", help="Model OCR; ưu tiên hơn OCR_MODEL/GEMINI_MODEL trong env/.env.")
+    parser.add_argument("--mapping-model", help="Model cho Gemini fallback của mapping; mặc định MAPPING_MODEL trong env/.env, nếu thiếu thì giống model OCR.")
     parser.add_argument("--exact-only", action="store_true", help="Mapping chỉ exact match, không gọi Gemini fallback.")
     parser.add_argument("--save-mongodb", action="store_true", help="Lưu kết quả vào MongoDB sau khi ghi JSON.")
     parser.add_argument("--no-cache", action="store_true",
@@ -32,7 +32,7 @@ def main() -> int:
     if args.timeout <= 0:
         parser.error("--timeout phải lớn hơn 0")
     load_env(args.env_file)
-    model = args.model or os.getenv("GEMINI_MODEL") or "gemini-3.8-flash"
+    model = args.model or os.getenv("OCR_MODEL") or os.getenv("GEMINI_MODEL") or "gemini-3.8-flash"
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         parser.error("Thiếu GEMINI_API_KEY trong env hoặc --env-file.")
@@ -51,7 +51,7 @@ def main() -> int:
         client = stack.enter_context(genai.Client(
             api_key=api_key, http_options=types.HttpOptions(timeout=int(args.timeout * 1000))))
         summary = run_repair_estimate_pipeline(
-            args.file, model=model, client=client, mapping_model=args.mapping_model,
+            args.file, model=model, client=client, mapping_model=args.mapping_model or os.getenv("MAPPING_MODEL"),
             exact_only=args.exact_only, output_dir=args.output_dir,
             codebook_dir=args.codebook_dir, timeout=args.timeout, cache=cache,
         )

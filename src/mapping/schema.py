@@ -12,6 +12,7 @@ class CodebookRow(StrictModel):
     code: str
     name: str
     row: int
+    item_type: Literal["part", "service"] | None = None
 
 
 class MappingResult(StrictModel):
@@ -29,3 +30,12 @@ class ItemSelection(StrictModel):
 
 class BatchSelection(StrictModel):
     selections: list[ItemSelection] = Field(description="Đúng một kết quả cho mỗi hạng mục đầu vào.")
+
+
+class WorkItemSelection(ItemSelection):
+    item_type: Literal["part", "service"] | None = Field(
+        description="Nhóm chứa name đã chọn; null khi name null.")
+
+
+class WorkBatchSelection(StrictModel):
+    selections: list[WorkItemSelection]

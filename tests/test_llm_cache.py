@@ -4,7 +4,7 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from openpyxl import Workbook
 
@@ -19,7 +19,7 @@ USAGE = {"total_input_tokens": 100, "total_cached_tokens": 0, "total_output_toke
 
 
 def response(payload, usage=USAGE):
-    return SimpleNamespace(status="completed", output_text=json.dumps(payload, ensure_ascii=False),
+    return SimpleNamespace(text=json.dumps(payload, ensure_ascii=False), candidates=[SimpleNamespace(finish_reason="STOP")], status="completed", output_text=json.dumps(payload, ensure_ascii=False),
                            model_dump=lambda **kwargs: {"status": "completed", "model": MODEL, "usage": usage})
 
 
@@ -148,6 +148,12 @@ class KeyTests(unittest.TestCase):
         self.file.write_text("báo giá khác")
         self.assertNotEqual(base, ocr_key(self.file, **self.base))
 
+    def test_ocr_key_depends_on_thinking_level(self):
+        base = ocr_key(self.file, **self.base)
+        self.assertEqual(base, ocr_key(self.file, **self.base, thinking_level=None))  # không đặt mức: khóa cũ giữ nguyên
+        low, medium = (ocr_key(self.file, **self.base, thinking_level=level) for level in ("low", "medium"))
+        self.assertEqual(len({base, low, medium}), 3)
+
     def test_mapping_key_ignores_money_but_not_name_or_codebook(self):
         context = mapping_context(model="m", instructions="i", names=["A", "B"])
         fields = {"raw_name": "Sơn  cản", "category": "paint", "quantity": 1, "unit_price": 10, "raw_code": "X1"}
@@ -166,18 +172,39 @@ class GeminiMatcherCacheTests(unittest.TestCase):
 
     def setUp(self):
         self.client, self.cache = Mock(), MemoryCache()
-        self.matcher = GeminiMatcher(self.client, MODEL, cache=self.cache)
+        self.context_env = patch.dict("os.environ", {"MAPPING_CONTEXT_CACHE_ENABLED": "false"})
+        self.context_env.start()
+        self.addCleanup(self.context_env.stop)
+        self.matcher = GeminiMatcher(self.client, MODEL, cache=self.cache, context_cache_enabled=False)
         self.items = estimate(("a", "paint"), ("b", "paint")).items
 
     def reply(self, *names):
-        self.client.interactions.create.return_value = response(
+        self.client.models.generate_content.return_value = response(
             {"selections": [{"index": i, "name": n} for i, n in enumerate(names)]})
+
+    def test_work_cache_roundtrip_and_item_type_change(self):
+        names = {"part": ["Cánh cửa"], "service": []}
+        self.client.models.generate_content.return_value = response({"selections": [
+            {"index": 0, "name": "Cánh cửa", "item_type": "part"},
+            {"index": 1, "name": None, "item_type": None}]})
+        expected = [("part", "Cánh cửa"), None]
+        self.assertEqual(self.matcher.select_many(self.items, names), expected)
+        # Redis/Mongo JSON serialization turns tuples into lists.
+        self.cache.data = json.loads(json.dumps(self.cache.data))
+        self.assertEqual(self.matcher.select_many(self.items, names), expected)
+        self.assertEqual(self.client.models.generate_content.call_count, 1)
+        self.client.models.generate_content.return_value = response({"selections": [
+            {"index": 0, "name": "Cánh cửa", "item_type": "service"},
+            {"index": 1, "name": None, "item_type": None}]})
+        self.assertEqual(self.matcher.select_many(self.items, {"part": [], "service": ["Cánh cửa"]}),
+                         [("service", "Cánh cửa"), None])
+        self.assertEqual(self.client.models.generate_content.call_count, 2)
 
     def test_second_call_is_served_from_cache_including_null(self):
         self.reply("Sơn cản", None)
         self.assertEqual(self.matcher.select_many(self.items, self.NAMES), ["Sơn cản", None])
         self.assertEqual(self.matcher.select_many(self.items, self.NAMES), ["Sơn cản", None])
-        self.assertEqual(self.client.interactions.create.call_count, 1)
+        self.assertEqual(self.client.models.generate_content.call_count, 1)
         self.assertEqual((self.matcher.cache_hits, self.matcher.cache_misses), (2, 2))
         self.assertEqual(len(self.matcher.calls), 1)
 
@@ -186,7 +213,7 @@ class GeminiMatcherCacheTests(unittest.TestCase):
         self.matcher.select_many(self.items[:1], self.NAMES)
         self.reply("Cản trước")
         self.assertEqual(self.matcher.select_many(self.items, self.NAMES), ["Sơn cản", "Cản trước"])
-        sent = json.loads(self.client.interactions.create.call_args.kwargs["input"])
+        sent = json.loads(self.client.models.generate_content.call_args.kwargs["contents"])
         self.assertEqual([i["raw_name"] for i in sent["items"]], ["b"])
         self.assertEqual(sent["items"][0]["index"], 0)
         self.assertEqual(set(sent["items"][0]), {
@@ -199,16 +226,16 @@ class GeminiMatcherCacheTests(unittest.TestCase):
         self.reply("Sơn cản")
         twin = self.items[0].model_copy(update={"quantity": 9.0})
         self.assertEqual(self.matcher.select_many([self.items[0], twin], self.NAMES), ["Sơn cản", "Sơn cản"])
-        sent = json.loads(self.client.interactions.create.call_args.kwargs["input"])
+        sent = json.loads(self.client.models.generate_content.call_args.kwargs["contents"])
         self.assertEqual(len(sent["items"]), 1)
 
     def test_cached_name_outside_codebook_is_ignored(self):
         self.reply("Sơn cản")
         self.matcher.select_many(self.items[:1], self.NAMES)
-        self.client.interactions.create.reset_mock()
+        self.client.models.generate_content.reset_mock()
         self.reply("Cản trước")  # codebook không còn "Sơn cản"
         self.assertEqual(self.matcher.select_many(self.items[:1], ["Cản trước"]), ["Cản trước"])
-        self.assertEqual(self.client.interactions.create.call_count, 1)
+        self.assertEqual(self.client.models.generate_content.call_count, 1)
 
     def test_failed_or_invalid_response_is_not_cached(self):
         self.reply("invented", None)
@@ -217,11 +244,11 @@ class GeminiMatcherCacheTests(unittest.TestCase):
         self.assertEqual(self.cache.sets, 0)
 
     def test_without_cache_behaviour_is_unchanged(self):
-        matcher = GeminiMatcher(self.client, MODEL)
+        matcher = GeminiMatcher(self.client, MODEL, context_cache_enabled=False)
         self.reply("Sơn cản", None)
         matcher.select_many(self.items, self.NAMES)
         matcher.select_many(self.items, self.NAMES)
-        self.assertEqual(self.client.interactions.create.call_count, 2)
+        self.assertEqual(self.client.models.generate_content.call_count, 2)
 
 
 class OcrCacheTests(unittest.TestCase):
@@ -233,6 +260,9 @@ class OcrCacheTests(unittest.TestCase):
         self.source.write_text("Vehicle Repair Estimate")
         self.estimate = estimate(("Sơn cản", "paint"))
         self.client, self.cache = Mock(), MemoryCache()
+        self.context_env = patch.dict("os.environ", {"MAPPING_CONTEXT_CACHE_ENABLED": "false"})
+        self.context_env.start()
+        self.addCleanup(self.context_env.stop)
 
     def run_ocr(self, name, **kwargs):
         return extract_repair_estimate(self.source, model=MODEL, client=self.client, cache=self.cache,
@@ -285,10 +315,18 @@ class PipelineCacheTests(unittest.TestCase):
             for row in rows:
                 w.active.append(row)
             w.save(self.root / f"{prefix}_codebook.xlsx")
+        w = Workbook()
+        w.active.append(["MA", "TEN", "item_type"])
+        w.active.append(["B1", "Cản", "part"])
+        w.active.append(["P1", "Cản trước", "part"])
+        w.save(self.root / "codebook.xlsx")
         self.source = self.root / "bao_gia.md"
         self.source.write_text("Báo giá")
         self.estimate = estimate(("Sơn cản", "paint"), ("Nẹp cản trước", "material"))
         self.client, self.cache = Mock(), MemoryCache()
+        self.context_env = patch.dict("os.environ", {"MAPPING_CONTEXT_CACHE_ENABLED": "false"})
+        self.context_env.start()
+        self.addCleanup(self.context_env.stop)
 
     def run_vre(self, **kwargs):
         return run_repair_estimate_pipeline(
@@ -296,30 +334,31 @@ class PipelineCacheTests(unittest.TestCase):
             codebook_dir=self.root, verbose=False, **kwargs)
 
     def test_second_run_makes_no_gemini_calls_and_reports_cache(self):
-        self.client.interactions.create.side_effect = [
-            response(self.estimate.model_dump(mode="json")),
-            response({"selections": [{"index": 0, "name": "Cản trước"}]}),
+        self.client.interactions.create.return_value = response(self.estimate.model_dump(mode="json"))
+        self.client.models.generate_content.side_effect = [
+            response({"selections": [{"index": 0, "name": "Cản", "item_type": "part"}, {"index": 1, "name": "Cản trước", "item_type": "part"}]}),
         ]
         first = self.run_vre(cache=self.cache)
-        self.assertEqual(self.client.interactions.create.call_count, 2)
+        self.assertEqual(self.client.interactions.create.call_count + self.client.models.generate_content.call_count, 2)
         self.assertFalse(first["steps"]["ocr"]["cache_hit"])
         second = self.run_vre(cache=self.cache)
-        self.assertEqual(self.client.interactions.create.call_count, 2)  # không gọi thêm
+        self.assertEqual(self.client.interactions.create.call_count + self.client.models.generate_content.call_count, 2)  # không gọi thêm
         self.assertTrue(second["steps"]["ocr"]["cache_hit"])
-        self.assertEqual(second["steps"]["mapping"]["cache_hits"], 1)
+        self.assertEqual(second["steps"]["mapping"]["cache_hits"], 2)
         self.assertEqual(second["steps"]["mapping"]["gemini_calls"], 0)
         self.assertEqual(second["total"]["cost"]["calls"], 0)
         self.assertEqual([i["codes"] for i in second["items"]], [i["codes"] for i in first["items"]])
         self.assertIn("cache", (Path(second["run_dir"]) / "report.txt").read_text())
 
     def test_no_cache_always_calls_gemini(self):
-        self.client.interactions.create.side_effect = [
-            response(self.estimate.model_dump(mode="json")), response({"selections": [{"index": 0, "name": None}]}),
-            response(self.estimate.model_dump(mode="json")), response({"selections": [{"index": 0, "name": None}]}),
+        self.client.interactions.create.return_value = response(self.estimate.model_dump(mode="json"))
+        self.client.models.generate_content.side_effect = [
+            response({"selections": [{"index": 0, "name": None, "item_type": None}, {"index": 1, "name": None, "item_type": None}]}),
+            response({"selections": [{"index": 0, "name": None, "item_type": None}, {"index": 1, "name": None, "item_type": None}]}),
         ]
         self.run_vre()
         self.run_vre()
-        self.assertEqual(self.client.interactions.create.call_count, 4)
+        self.assertEqual(self.client.interactions.create.call_count + self.client.models.generate_content.call_count, 4)
 
 
 if __name__ == "__main__":

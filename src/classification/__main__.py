@@ -43,7 +43,7 @@ def main():
         for line in a.env_file.read_text().splitlines():
             key, sep, value = line.strip().partition("=")
             if sep and key in {"GEMINI_API_KEY", "GEMINI_MODEL"}:
-                os.environ.setdefault(key, value.strip().strip("\"'"))
+                os.environ.setdefault(key, (value if value.strip()[:1] in "\"'" else value.split(" #", 1)[0]).strip().strip("\"'"))
     model = a.model or os.getenv("GEMINI_MODEL") or "gemini-3.6-flash"
     source_hash = digest(a.input.read_bytes())
     rows = read_rows(a.input, a.sheet)

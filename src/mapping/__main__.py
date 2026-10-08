@@ -26,13 +26,13 @@ def main():
         parser.error("--timeout phải lớn hơn 0")
     estimate = RepairEstimate.model_validate_json(args.result.read_text(encoding="utf-8"))
     load_env(args.env_file)
-    model = args.model or os.getenv("GEMINI_MODEL") or "gemini-3.6-flash"
+    model = args.model or os.getenv("MAPPING_MODEL") or os.getenv("GEMINI_MODEL") or "gemini-3.6-flash"
     if not args.exact_only and not os.getenv("GEMINI_API_KEY"):
         parser.error("Thiếu GEMINI_API_KEY; dùng --exact-only để test offline")
     with (nullcontext(None) if args.exact_only else genai.Client(
         api_key=os.getenv("GEMINI_API_KEY"), http_options=types.HttpOptions(timeout=int(args.timeout * 1000))
     )) as client:
-        matcher = GeminiMatcher(client, model) if client else None
+        matcher = GeminiMatcher(client, model, context_cache_dir=args.output.parent / ".gemini_context_cache") if client else None
         mapper = CodebookMapper(matcher=matcher, codebook_dir=args.codebook_dir)
         args.output.parent.mkdir(parents=True, exist_ok=True)
         try:

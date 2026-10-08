@@ -23,14 +23,14 @@ def main() -> int:
     parser.add_argument("--env-file", type=Path, default=PROJECT_ROOT / ".env")
     parser.add_argument("--prompt", type=Path, default=ROOT / "prompt.py",
                         help="File .py khai báo PROMPT hoặc file text UTF-8; mặc định prompt.py.")
-    parser.add_argument("--model", help="Ưu tiên hơn GEMINI_MODEL trong env/.env.")
+    parser.add_argument("--model", help="Ưu tiên hơn OCR_MODEL/GEMINI_MODEL trong env/.env.")
     parser.add_argument("--output-dir", type=Path, default=OUTPUT_DIR)
     parser.add_argument("--timeout", type=float, default=180, help="Timeout mỗi HTTP request và chờ upload (giây).")
     parser.add_argument("--list-models", action="store_true", help="Liệt kê model key hiện tại được truy cập.")
     parser.add_argument("--dry-run", action="store_true", help="Kiểm tra input/config, không gọi API.")
     args = parser.parse_args()
     load_env(args.env_file)
-    model = args.model or os.getenv("GEMINI_MODEL") or "gemini-3.6-flash"
+    model = args.model or os.getenv("OCR_MODEL") or os.getenv("GEMINI_MODEL") or "gemini-3.6-flash"
     if args.timeout <= 0:
         parser.error("--timeout phải lớn hơn 0")
     api_key = os.getenv("GEMINI_API_KEY")

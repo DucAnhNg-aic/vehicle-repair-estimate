@@ -20,5 +20,6 @@ def build_metrics(summary: dict, *, item_count: int, methods: dict) -> dict:
             "cache_hits": mapping.get("cache_hits", 0),
             "cache_misses": mapping.get("cache_misses", 0),
             "gemini_calls": mapping.get("gemini_calls", 0),
+            "context_cache": mapping.get("context_cache", []),
         },
     }
