@@ -113,10 +113,7 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
             checks["mongodb"] = "ok"
         except Exception:
             checks["mongodb"] = "failed"
-        checks["codebook"] = "ok" if all(
-            (settings.codebook_dir / name).is_file()
-            for name in ("service_codebook.xlsx", "part_codebook.xlsx")
-        ) else "failed"
+        checks["codebook"] = "ok" if (settings.codebook_dir / "codebook.xlsx").is_file() else "failed"
         if "failed" in checks.values():
             raise _error(status.HTTP_503_SERVICE_UNAVAILABLE, "NOT_READY", "Một hoặc nhiều dependency chưa sẵn sàng")
         return {"status": "ok", "checks": checks}

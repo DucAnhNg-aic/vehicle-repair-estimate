@@ -249,7 +249,7 @@ Username/password nằm trong `nginx/auth/credentials.txt`, không được comm
 đóng vào image. Trình duyệt tự hỏi đăng nhập; curl dùng `-u demo` để hỏi mật khẩu.
 Không đưa Gemini key hoặc secret vào JavaScript.
 
-Nginx giới hạn body 26 MiB (API vẫn giới hạn file 25 MiB), tạo job 6 request/phút/IP
+Nginx giới hạn body 26 MiB (API vẫn giới hạn file 25 MiB), tạo job 20 request/phút/IP
 với burst 2 và tối đa 10 kết nối/IP. `/docs`, `/redoc`, `/openapi.json` và `/health/`
 không truy cập qua gateway. FastAPI không publish cổng host; MongoDB/Mongo Express
 chỉ bind localhost. Nginx tự cập nhật IP upstream API qua Docker DNS mỗi 5 giây,
@@ -312,4 +312,5 @@ VRE_API_UPLOAD_DIR=/tmp/vre-api/uploads
 VRE_API_MAX_UPLOAD_BYTES=26214400
 VRE_API_RESULT_TTL_SECONDS=604800
 VRE_API_JOB_TIMEOUT_SECONDS=2100
+VRE_API_WORKERS=10   # số job chạy song song trong container worker (compose mặc định 10)
 ```

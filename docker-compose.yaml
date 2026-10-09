@@ -110,6 +110,7 @@ services:
       REDIS_URL: redis://redis:6379/0
       MONGO_URI: mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@mongodb:27017/?authSource=admin
       VRE_API_UPLOAD_DIR: /tmp/vre-api/uploads
+      VRE_API_WORKERS: ${VRE_API_WORKERS:-10}
     volumes:
       - vre_api_uploads:/tmp/vre-api/uploads
       - vre_outputs:/app/outputs

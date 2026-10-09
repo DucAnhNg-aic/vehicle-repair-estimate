@@ -25,6 +25,9 @@ ROOT = Path(__file__).resolve().parent  # thư mục ocr (.env, prompt.py)
 PROJECT_ROOT = ROOT.parents[1]  # ocr -> src -> thư mục gốc dự án (.env, data/, outputs/)
 IMG_DIR = PROJECT_ROOT / "data" / "img"
 OUTPUT_DIR = PROJECT_ROOT / "outputs"
+# mimetypes phụ thuộc /etc/mime.types của hệ điều hành; image slim không có nên .webp/.heic/.heif trả None
+for _mime, _suffix in (("image/webp", ".webp"), ("image/heic", ".heic"), ("image/heif", ".heif")):
+    mimetypes.add_type(_mime, _suffix)
 SUPPORTED = {"application/pdf", "image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"}
 INLINE_LIMIT = 15 * 1024 * 1024  # Leave room for base64 expansion and prompt.
 OCR_USER_TEXT = "Trích xuất toàn bộ báo giá theo hướng dẫn và schema."

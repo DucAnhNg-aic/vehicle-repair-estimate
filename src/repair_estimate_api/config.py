@@ -15,7 +15,7 @@ def _load_api_env(path: Path) -> None:
         "REDIS_URL", "GEMINI_MODEL", "OCR_MODEL", "MAPPING_MODEL", "OCR_THINKING_LEVEL", "MAPPING_THINKING_LEVEL", "VRE_API_SHOW_AI_OPTIONS",
         "VRE_API_ALLOWED_MODELS",
         "VRE_API_QUEUE", "VRE_API_UPLOAD_DIR", "VRE_API_MAX_UPLOAD_BYTES",
-        "VRE_API_RESULT_TTL_SECONDS", "VRE_API_JOB_TIMEOUT_SECONDS",
+        "VRE_API_RESULT_TTL_SECONDS", "VRE_API_JOB_TIMEOUT_SECONDS", "VRE_API_WORKERS",
     }
     if not path.is_file():
         return
@@ -58,6 +58,7 @@ class ApiSettings:
     max_upload_bytes: int
     result_ttl_seconds: int
     job_timeout_seconds: int
+    worker_count: int = 1  # số RQ worker chạy song song trong một tiến trình worker-pool
     default_mapping_model: str | None = None
     default_ocr_thinking_level: str | None = None
     default_mapping_thinking_level: str | None = None
@@ -92,4 +93,5 @@ class ApiSettings:
             max_upload_bytes=_positive_int("VRE_API_MAX_UPLOAD_BYTES", 25 * 1024 * 1024),
             result_ttl_seconds=_positive_int("VRE_API_RESULT_TTL_SECONDS", 7 * 86400),
             job_timeout_seconds=_positive_int("VRE_API_JOB_TIMEOUT_SECONDS", 2100),
+            worker_count=_positive_int("VRE_API_WORKERS", 1),
         )

@@ -275,7 +275,6 @@
                 <span id="metricTotalDuration" class="text-2xl font-extrabold text-slate-900 tracking-tight">—</span>
                 <span class="text-xs font-semibold text-slate-400">giây</span>
               </div>
-              <p id="metricTotalCost" class="text-xs text-slate-500 mt-1 font-mono">Chi phí: $0.00</p>
             </div>
 
             <!-- OCR METRIC -->
@@ -437,21 +436,29 @@
       renderAiOptions();
     }
 
+    // Tên hiển thị của model: gemini-3.8-flash -> aicycle-1.8-flash (value gửi API vẫn giữ tên thật)
+    const MODEL_WORD_ALIASES = { flash: 'swift', lite: 'mini' };
+    function displayModelName(model) {
+      if (!model) return model;
+      return String(model)
+        .replace(/^gemini-(\d+)/i, (_, major) => `aicycle-${Math.max(Number(major) - 2, 0)}`)
+        .replace(/[a-z]+/gi, word => MODEL_WORD_ALIASES[word.toLowerCase()] || word);
+    }
     // Dropdown model/reasoning: "Auto" = dùng cấu hình mặc định của server (value rỗng)
-    function fillSelect(id, values, autoLabel) {
+    function fillSelect(id, values, autoLabel, labelFn = v => v) {
       const select = $(id);
       if (select.dataset.ready) return;
       select.dataset.ready = '1';
       select.add(new Option(autoLabel, ''));
-      values.forEach(value => select.add(new Option(value, value)));
+      values.forEach(value => select.add(new Option(labelFn(value), value)));
     }
     function renderAiOptions() {
       if (!appConfig) return;
       $('aiOptions').classList.toggle('hidden', appConfig.show_ai_options === false);
       const models = appConfig.models || [];
       const levels = appConfig.thinking_levels || [];
-      fillSelect('ocrModel', models, `Auto (${appConfig.default_model})`);
-      fillSelect('mappingModel', models, `Auto (${appConfig.default_mapping_model})`);
+      fillSelect('ocrModel', models, `Auto (${displayModelName(appConfig.default_model)})`, displayModelName);
+      fillSelect('mappingModel', models, `Auto (${displayModelName(appConfig.default_mapping_model)})`, displayModelName);
       fillSelect('ocrThinking', levels, `Auto (${appConfig.default_ocr_thinking_level || 'mặc định model'})`);
       fillSelect('mappingThinking', levels, `Auto (${appConfig.default_mapping_thinking_level})`);
     }
@@ -530,11 +537,10 @@
       const title = [run.vehicle_plate, run.estimate_number].filter(Boolean).join(' · ') || run.file_name || run.run_id;
       const stats = run.item_count == null ? '' :
         `${run.item_count} hạng mục · ${run.exact_count || 0} exact · ${run.gemini_count || 0} AI · ${run.unmatched_count || 0} chưa khớp`;
-      const cost = run.cost_usd != null ? ` · $${Number(run.cost_usd).toFixed(4)}` : '';
       button.append(
         historyLine(title, 'text-xs font-bold text-slate-800 truncate'),
         historyLine(`${formatVnTime(run.created_at)} · ${run.file_name || ''}`, 'text-[11px] text-slate-500 truncate mt-0.5'),
-        historyLine(stats + cost, 'text-[11px] text-slate-400 mt-0.5'),
+        historyLine(stats, 'text-[11px] text-slate-400 mt-0.5'),
       );
       if (run.status && run.status !== 'success') {
         button.append(historyLine(`Trạng thái: ${run.status}`, 'text-[11px] font-semibold text-rose-600 mt-0.5'));
@@ -708,11 +714,6 @@
       const mapMetric = data.metrics?.mapping || {};
 
       $('metricTotalDuration').textContent = totalMetric.duration_seconds != null ? totalMetric.duration_seconds : '—';
-      if (totalMetric.cost?.total_usd != null) {
-        $('metricTotalCost').textContent = `Chi phí ước tính: $${Number(totalMetric.cost.total_usd).toFixed(4)} USD`;
-      } else {
-        $('metricTotalCost').textContent = ocrMetric.cache_hit ? 'Dùng cache · Tiết kiệm chi phí AI' : 'Chi phí tính toán AI tiêu chuẩn';
-      }
 
       $('metricOcrDuration').textContent = ocrMetric.duration_seconds != null ? ocrMetric.duration_seconds : '—';
       if (ocrMetric.cache_hit) {
