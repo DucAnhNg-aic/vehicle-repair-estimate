@@ -38,8 +38,8 @@ số tiền, và đối chiếu mỗi dòng với mã hạng mục chuẩn AICyc
 Mọi request gửi header `X-API-Key: <key>` (bấm **Authorize** để thử trên trang này).
 
 ## Luồng gọi
-1. `POST /v1/estimates` với file báo giá. Server chờ tối đa `wait_seconds`
-   (mặc định và tối đa **{settings.partner_max_wait_seconds}s**):
+1. `POST /v1/estimates` với file báo giá. Server giữ kết nối chờ tối đa `wait_seconds`
+   (mặc định **{settings.partner_max_wait_seconds}s**, phía gọi có thể truyền cao hơn tuỳ ý):
    * **200**: xử lý xong, kết quả nằm trong `result`.
    * **202**: chưa xong trong thời gian chờ. Job **vẫn tiếp tục chạy**, hãy gọi
      `GET /v1/estimates/{{job_id}}` mỗi 3–5 giây tới khi `status` là `success` hoặc `failed`.
@@ -132,15 +132,14 @@ def create_partner_app(settings: ApiSettings, queue_factory: Callable[[], Queue]
             None, max_length=100, description="Mã tham chiếu phía khách (mã hồ sơ, claim...); trả lại nguyên văn."),
         wait_seconds: int | None = Form(
             None, ge=0,
-            description=f"Số giây server giữ request chờ kết quả, 0–{settings.partner_max_wait_seconds} "
-                        f"(mặc định {settings.partner_max_wait_seconds}). Giá trị lớn hơn được hạ về mức tối đa."),
+            description=f"Số giây server giữ request chờ kết quả (mặc định {settings.partner_max_wait_seconds}s; "
+                        f"truyền 0 nếu muốn bất đồng bộ hoàn toàn, hoặc truyền số lớn hơn nếu muốn chờ lâu hơn)."),
         client: str = Depends(client_name),
     ) -> dict:
         queue = queue_factory()
         job = await enqueue_upload(lambda: queue, settings, file, JobOptions(),
                                    {"channel": "partner", "client": client, "reference_id": reference_id})
-        wait = settings.partner_max_wait_seconds if wait_seconds is None else min(
-            wait_seconds, settings.partner_max_wait_seconds)
+        wait = settings.partner_max_wait_seconds if wait_seconds is None else wait_seconds
         deadline = time.monotonic() + wait
         while True:
             body = to_estimate(fetch_owned(queue, job.id, client), request)

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "AICycle Repair Estimate API",
-    "description": "\nTrích xuất và chuẩn hoá **báo giá sửa chữa xe** (ảnh hoặc PDF): đọc thông tin chung, từng dòng hạng mục,\nsố tiền, và đối chiếu mỗi dòng với mã hạng mục chuẩn AICycle.\n\n## Xác thực\nMọi request gửi header `X-API-Key: <key>` (bấm **Authorize** để thử trên trang này).\n\n## Luồng gọi\n1. `POST /v1/estimates` với file báo giá. Server chờ tối đa `wait_seconds`\n   (mặc định và tối đa **180s**):\n   * **200**: xử lý xong, kết quả nằm trong `result`.\n   * **202**: chưa xong trong thời gian chờ. Job **vẫn tiếp tục chạy**, hãy gọi\n     `GET /v1/estimates/{job_id}` mỗi 3–5 giây tới khi `status` là `success` hoặc `failed`.\n   * **500** với `status = failed`: không xử lý được tài liệu.\n2. Một báo giá thường mất 30–90 giây; tài liệu dài có thể lâu hơn. Muốn luôn bất đồng bộ thì gửi `wait_seconds=0`.\n\nKết quả được giữ 7 ngày kể từ khi tạo job.\n\n## Giới hạn\n* File: .heic, .heif, .jpeg, .jpg, .markdown, .md, .pdf, .png, .webp; tối đa 25 MB.\n* Lỗi trả về dạng `{\"detail\": {\"code\": \"...\", \"message\": \"...\"}}`; `429` khi vượt giới hạn tần suất.\n\n## Ví dụ\n```bash\ncurl -X POST \"$BASE/partner/v1/estimates\" \\\n  -H \"X-API-Key: $API_KEY\" \\\n  -F \"file=@bao_gia.jpg\" -F \"reference_id=CLAIM-2026-0001\"\n```\n",
+    "description": "\nTrích xuất và chuẩn hoá **báo giá sửa chữa xe** (ảnh hoặc PDF): đọc thông tin chung, từng dòng hạng mục,\nsố tiền, và đối chiếu mỗi dòng với mã hạng mục chuẩn AICycle.\n\n## Xác thực\nMọi request gửi header `X-API-Key: <key>` (bấm **Authorize** để thử trên trang này).\n\n## Luồng gọi\n1. `POST /v1/estimates` với file báo giá. Server giữ kết nối chờ tối đa `wait_seconds`\n   (mặc định **180s**, phía gọi có thể truyền cao hơn tuỳ ý):\n   * **200**: xử lý xong, kết quả nằm trong `result`.\n   * **202**: chưa xong trong thời gian chờ. Job **vẫn tiếp tục chạy**, hãy gọi\n     `GET /v1/estimates/{job_id}` mỗi 3–5 giây tới khi `status` là `success` hoặc `failed`.\n   * **500** với `status = failed`: không xử lý được tài liệu.\n2. Một báo giá thường mất 30–90 giây; tài liệu dài có thể lâu hơn. Muốn luôn bất đồng bộ thì gửi `wait_seconds=0`.\n\nKết quả được giữ 7 ngày kể từ khi tạo job.\n\n## Giới hạn\n* File: .heic, .heif, .jpeg, .jpg, .markdown, .md, .pdf, .png, .webp; tối đa 25 MB.\n* Lỗi trả về dạng `{\"detail\": {\"code\": \"...\", \"message\": \"...\"}}`; `429` khi vượt giới hạn tần suất.\n\n## Ví dụ\n```bash\ncurl -X POST \"$BASE/partner/v1/estimates\" \\\n  -H \"X-API-Key: $API_KEY\" \\\n  -F \"file=@bao_gia.jpg\" -F \"reference_id=CLAIM-2026-0001\"\n```\n",
     "version": "1.0.0"
   },
   "paths": {
@@ -244,7 +244,7 @@
               }
             ],
             "title": "Wait Seconds",
-            "description": "Số giây server giữ request chờ kết quả, 0–180 (mặc định 180). Giá trị lớn hơn được hạ về mức tối đa."
+            "description": "Số giây server giữ request chờ kết quả (mặc định 180s; truyền 0 nếu muốn bất đồng bộ hoàn toàn, hoặc truyền số lớn hơn nếu muốn chờ lâu hơn)."
           }
         },
         "type": "object",
@@ -845,10 +845,5 @@
         "name": "X-API-Key"
       }
     }
-  },
-  "servers": [
-    {
-      "url": "/partner"
-    }
-  ]
+  }
 }
