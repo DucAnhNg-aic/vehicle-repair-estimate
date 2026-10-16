@@ -79,7 +79,7 @@ class ApiSettings:
     default_mapping_thinking_level: str | None = None
     show_ai_options: bool = True  # False: demo UI ẩn dropdown model/reasoning
     partner_api_keys: dict[str, str] = field(default_factory=dict)  # key → tên khách; rỗng = tắt API đối tác
-    partner_max_wait_seconds: int = 90  # < 100s để đi qua được Cloudflare/proxy có timeout mặc định
+    partner_max_wait_seconds: int = 180
 
     @classmethod
     def from_env(cls, env_file: str | Path = PROJECT_ROOT / ".env") -> "ApiSettings":
@@ -112,5 +112,5 @@ class ApiSettings:
             job_timeout_seconds=_positive_int("VRE_API_JOB_TIMEOUT_SECONDS", 2100),
             worker_count=_positive_int("VRE_API_WORKERS", 1),
             partner_api_keys=_partner_api_keys(os.getenv("VRE_PARTNER_API_KEYS", "")),
-            partner_max_wait_seconds=_positive_int("VRE_PARTNER_MAX_WAIT_SECONDS", 90),
+            partner_max_wait_seconds=_positive_int("VRE_PARTNER_MAX_WAIT_SECONDS", 180),
         )
