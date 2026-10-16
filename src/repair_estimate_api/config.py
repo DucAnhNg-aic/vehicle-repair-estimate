@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from mapping.mapper import CODEBOOK_DIR
@@ -16,6 +16,7 @@ def _load_api_env(path: Path) -> None:
         "VRE_API_ALLOWED_MODELS",
         "VRE_API_QUEUE", "VRE_API_UPLOAD_DIR", "VRE_API_MAX_UPLOAD_BYTES",
         "VRE_API_RESULT_TTL_SECONDS", "VRE_API_JOB_TIMEOUT_SECONDS", "VRE_API_WORKERS",
+        "VRE_PARTNER_API_KEYS", "VRE_PARTNER_MAX_WAIT_SECONDS",
     }
     if not path.is_file():
         return
@@ -45,6 +46,20 @@ def _positive_int(name: str, default: int) -> int:
     return value
 
 
+def _partner_api_keys(raw: str) -> dict[str, str]:
+    """``ten_khach:key,ten_khach_2:key2`` → {key: ten_khach}. Mỗi khách một key để thu hồi riêng."""
+    keys: dict[str, str] = {}
+    for entry in filter(None, (part.strip() for part in raw.split(","))):
+        name, separator, key = entry.partition(":")
+        name, key = name.strip(), key.strip()
+        if not separator or not name or len(key) < 24:
+            raise ValueError("VRE_PARTNER_API_KEYS phải có dạng ten:key (key >= 24 ký tự), cách nhau bởi dấu phẩy")
+        if key in keys:
+            raise ValueError(f"VRE_PARTNER_API_KEYS bị trùng key cho {name}")
+        keys[key] = name
+    return keys
+
+
 @dataclass(frozen=True)
 class ApiSettings:
     env_file: Path
@@ -63,6 +78,8 @@ class ApiSettings:
     default_ocr_thinking_level: str | None = None
     default_mapping_thinking_level: str | None = None
     show_ai_options: bool = True  # False: demo UI ẩn dropdown model/reasoning
+    partner_api_keys: dict[str, str] = field(default_factory=dict)  # key → tên khách; rỗng = tắt API đối tác
+    partner_max_wait_seconds: int = 90  # < 100s để đi qua được Cloudflare/proxy có timeout mặc định
 
     @classmethod
     def from_env(cls, env_file: str | Path = PROJECT_ROOT / ".env") -> "ApiSettings":
@@ -94,4 +111,6 @@ class ApiSettings:
             result_ttl_seconds=_positive_int("VRE_API_RESULT_TTL_SECONDS", 7 * 86400),
             job_timeout_seconds=_positive_int("VRE_API_JOB_TIMEOUT_SECONDS", 2100),
             worker_count=_positive_int("VRE_API_WORKERS", 1),
+            partner_api_keys=_partner_api_keys(os.getenv("VRE_PARTNER_API_KEYS", "")),
+            partner_max_wait_seconds=_positive_int("VRE_PARTNER_MAX_WAIT_SECONDS", 90),
         )

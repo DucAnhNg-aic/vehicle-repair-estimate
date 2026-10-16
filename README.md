@@ -235,6 +235,35 @@ Mặc định `show` chỉ in thông tin tổng quan; thêm `--full` để xem t
 
 ## FastAPI và Redis worker
 
+### API đối tác (`/partner`)
+
+Endpoint cho hệ thống bên ngoài, chạy chung container `api`/`worker` và cùng hàng đợi với demo,
+nhưng xác thực bằng header `X-API-Key` thay vì Basic Auth:
+
+- Swagger: `http://<IP_ADDRESS>:8000/partner/docs` (spec: `/partner/openapi.json`, bản xuất sẵn ở
+  `docs/partner-openapi.json` để import Postman).
+- `POST /partner/v1/estimates` gửi file và giữ request chờ tối đa `VRE_PARTNER_MAX_WAIT_SECONDS`
+  (mặc định 90s, dưới timeout 100s của Cloudflare/proxy phổ biến): `200` kèm `result` khi xong,
+  `202` kèm `status_url` khi chưa xong (job vẫn chạy), `500` với `status=failed`.
+- `GET /partner/v1/estimates/{job_id}` hỏi lại trạng thái/kết quả. Khách chỉ thấy job của chính mình.
+- Kết quả chỉ gồm `document` + `items` (kèm `mapping.method` = `exact|ai|unmatched` và mã AICycle);
+  không trả chi phí, tên model hay đường dẫn nội bộ.
+- MongoDB lưu mỗi lần chạy kèm `source` (`channel` = `demo|partner`, `client`, `reference_id`, `job_id`;
+  `null` khi chạy CLI), `input.file_name` là tên file gốc và `input.sha256` là hash nội dung file.
+  Lịch sử `/runs?q=` tìm được cả theo `reference_id`.
+
+Cấp key trong `.env` (mỗi khách một key, xoá entry rồi recreate `api` để thu hồi):
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+# VRE_PARTNER_API_KEYS=aicycle-be:<key>,khach-b:<key2>
+docker compose up -d --no-deps api
+```
+
+Nginx giới hạn 60 request/phút cho mỗi key (burst 20), 30 kết nối đồng thời mỗi IP và đặt
+`proxy_read_timeout 120s` riêng cho `/partner/`. Khi đổi schema, xuất lại spec:
+`curl -s http://<IP_ADDRESS>:8000/partner/openapi.json > docs/partner-openapi.json`.
+
 ### Nginx bảo vệ demo
 
 Nginx là cửa vào duy nhất tại `http://<IP_ADDRESS>:8000/demo`. UI và API đều

@@ -68,7 +68,11 @@ def process_repair_estimate_job(file_path: str, options: dict, server: dict) -> 
             saved = None
             if repository is not None:
                 _set_progress("storage")
-                saved = repository.save_run(summary["run_dir"])
+                job = get_current_job()
+                meta = job.meta if job else {}
+                origin = {"channel": meta.get("channel"), "client": meta.get("client"),
+                          "reference_id": meta.get("reference_id"), "job_id": job.id if job else None}
+                saved = repository.save_run(summary["run_dir"], source=origin, file_name=meta.get("file_name"))
             mapping = _read_mapping(summary["run_dir"])
             _set_progress("completed")
             return {

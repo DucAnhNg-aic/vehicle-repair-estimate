@@ -84,6 +84,7 @@ class RepairEstimateApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(options["use_cache"])
         self.assertNotIn("env_file", options)
         self.assertEqual(server["env_file"], str(self.settings.env_file))
+        self.assertEqual(kwargs["meta"]["channel"], "demo")
         self.assertEqual(kwargs["meta"]["sha256"], "6105d6cc76af400325e94d588ce511be5bfdbb73b437dc51eca43917d7a43e3d")
 
     async def test_thinking_levels_are_forwarded_and_validated(self):
@@ -117,7 +118,7 @@ class RepairEstimateApiTests(unittest.IsolatedAsyncioTestCase):
         self.fake_history(rows=[{
             "run_id": "r1", "created_at": datetime(2026, 10, 8, 6, 0, 0), "status": "success",
             "input": {"file_name": "a.jpg"}, "document": {"vehicle_plate": "30A-1", "estimate_number": "BG1"},
-            "models": {"ocr": "m"},
+            "models": {"ocr": "m"}, "source": {"channel": "partner", "client": "acme", "reference_id": "C-1"},
             "metrics": {"total": {"duration_seconds": 5.5, "cost": {"total_usd": 0.07}}, "ocr": {"cache_hit": False},
                         "mapping": {"item_count": 3, "exact_count": 1, "gemini_count": 1, "unmatched_count": 1}},
         }])
@@ -126,6 +127,7 @@ class RepairEstimateApiTests(unittest.IsolatedAsyncioTestCase):
         run = response.json()["runs"][0]
         self.assertTrue(run["created_at"].endswith("Z"), run["created_at"])  # UTC rõ ràng để UI đổi sang giờ VN
         self.assertEqual((run["vehicle_plate"], run["item_count"], run["cost_usd"]), ("30A-1", 3, 0.07))
+        self.assertEqual((run["channel"], run["client"], run["reference_id"]), ("partner", "acme", "C-1"))
         self.assertEqual(self.history_kwargs["search"], "30A")
         self.assertIsNone(response.json()["next_before"])  # ít hơn limit: hết trang
         self.assertEqual((await self.client.get("/api/v1/repair-estimate/runs?limit=0")).status_code, 422)

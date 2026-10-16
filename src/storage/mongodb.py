@@ -67,8 +67,13 @@ def _read_json(path: Path) -> dict[str, Any]:
     return payload
 
 
-def build_run_document(run_dir: str | Path) -> dict[str, Any]:
-    """Build one MongoDB document from summary.json and mapping.json."""
+def build_run_document(run_dir: str | Path, *, source: dict[str, Any] | None = None,
+                       file_name: str | None = None) -> dict[str, Any]:
+    """Build one MongoDB document from summary.json and mapping.json.
+
+    ``source``: kênh gọi (``channel`` demo/partner, ``client``, ``reference_id``, ``job_id``); None khi chạy CLI.
+    ``file_name``: tên file gốc người dùng upload (API lưu file tạm dưới tên ``<job_id>.<ext>``).
+    """
     run_dir = Path(run_dir).resolve()
     summary = _read_json(run_dir / "summary.json")
     mapping = _read_json(run_dir / "mapping.json")
@@ -103,9 +108,10 @@ def build_run_document(run_dir: str | Path) -> dict[str, Any]:
     return {
         "run_id": run_dir.name,
         "created_at": created_at,
-        "input": {"file_name": source_path.name, "file_path": str(source_path),
+        "input": {"file_name": file_name or source_path.name, "file_path": str(source_path),
                   "sha256": summary.get("input_sha256")},
         "status": summary.get("status", "unknown"),
+        "source": source,
         "updated_by": "gemini",
         "models": summary.get("models") or {},
         "document": document,
@@ -133,9 +139,12 @@ class RepairEstimateRepository:
         self.collection.create_index([("document.vehicle_plate", ASCENDING)], name="vehicle_plate")
         self.collection.create_index([("document.estimate_number", ASCENDING)], name="estimate_number")
         self.collection.create_index([("created_at", DESCENDING)], name="created_at_desc")
+        self.collection.create_index([("source.client", ASCENDING), ("source.reference_id", ASCENDING)],
+                                     name="source_client_reference")
 
-    def save_run(self, run_dir: str | Path) -> dict[str, Any]:
-        document = build_run_document(run_dir)
+    def save_run(self, run_dir: str | Path, *, source: dict[str, Any] | None = None,
+                 file_name: str | None = None) -> dict[str, Any]:
+        document = build_run_document(run_dir, source=source, file_name=file_name)
         result = self.collection.replace_one(
             {"run_id": document["run_id"]}, document, upsert=True
         )
@@ -177,11 +186,11 @@ class RepairEstimateRepository:
         if search:
             pattern = {"$regex": re.escape(search.strip()), "$options": "i"}
             query["$or"] = [{"document.vehicle_plate": pattern}, {"document.estimate_number": pattern},
-                            {"input.file_name": pattern}]
+                            {"input.file_name": pattern}, {"source.reference_id": pattern}]
         projection = {
             "_id": 0, "run_id": 1, "created_at": 1, "status": 1, "models": 1,
             "input.file_name": 1, "document.vehicle_plate": 1, "document.estimate_number": 1,
-            "metrics": 1,
+            "metrics": 1, "source": 1,
         }
         return list(self.collection.find(query, projection).sort("created_at", DESCENDING).limit(limit))
 

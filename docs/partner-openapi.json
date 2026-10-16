@@ -1,0 +1,854 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "AICycle Repair Estimate API",
+    "description": "\nTrích xuất và chuẩn hoá **báo giá sửa chữa xe** (ảnh hoặc PDF): đọc thông tin chung, từng dòng hạng mục,\nsố tiền, và đối chiếu mỗi dòng với mã hạng mục chuẩn AICycle.\n\n## Xác thực\nMọi request gửi header `X-API-Key: <key>` (bấm **Authorize** để thử trên trang này).\n\n## Luồng gọi\n1. `POST /v1/estimates` với file báo giá. Server chờ tối đa `wait_seconds`\n   (mặc định và tối đa **90s**):\n   * **200**: xử lý xong, kết quả nằm trong `result`.\n   * **202**: chưa xong trong thời gian chờ. Job **vẫn tiếp tục chạy**, hãy gọi\n     `GET /v1/estimates/{job_id}` mỗi 3–5 giây tới khi `status` là `success` hoặc `failed`.\n   * **500** với `status = failed`: không xử lý được tài liệu.\n2. Một báo giá thường mất 30–90 giây; tài liệu dài có thể lâu hơn. Muốn luôn bất đồng bộ thì gửi `wait_seconds=0`.\n\nKết quả được giữ 7 ngày kể từ khi tạo job.\n\n## Giới hạn\n* File: .heic, .heif, .jpeg, .jpg, .markdown, .md, .pdf, .png, .webp; tối đa 25 MB.\n* Lỗi trả về dạng `{\"detail\": {\"code\": \"...\", \"message\": \"...\"}}`; `429` khi vượt giới hạn tần suất.\n\n## Ví dụ\n```bash\ncurl -X POST \"$BASE/partner/v1/estimates\" \\\n  -H \"X-API-Key: $API_KEY\" \\\n  -F \"file=@bao_gia.jpg\" -F \"reference_id=CLAIM-2026-0001\"\n```\n",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/v1/estimates": {
+      "post": {
+        "tags": [
+          "Estimates"
+        ],
+        "summary": "Gửi báo giá và nhận kết quả",
+        "operationId": "create_estimate_v1_estimates_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_create_estimate_v1_estimates_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Estimate"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Chưa xong trong thời gian chờ; hỏi lại qua `status_url`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Estimate"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`status = failed`: không xử lý được tài liệu.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Estimate"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PartnerErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request Entity Too Large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PartnerErrorResponse"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Unsupported Media Type",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PartnerErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PartnerErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PartnerErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PartnerErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ]
+      }
+    },
+    "/v1/estimates/{job_id}": {
+      "get": {
+        "tags": [
+          "Estimates"
+        ],
+        "summary": "Xem trạng thái / kết quả của một job",
+        "operationId": "get_estimate_v1_estimates__job_id__get",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Estimate"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PartnerErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PartnerErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PartnerErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PartnerErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PartnerErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Body_create_estimate_v1_estimates_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "description": "Ảnh hoặc PDF báo giá sửa chữa."
+          },
+          "reference_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Id",
+            "description": "Mã tham chiếu phía khách (mã hồ sơ, claim...); trả lại nguyên văn."
+          },
+          "wait_seconds": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wait Seconds",
+            "description": "Số giây server giữ request chờ kết quả, 0–90 (mặc định 90). Giá trị lớn hơn được hạ về mức tối đa."
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_create_estimate_v1_estimates_post"
+      },
+      "CodebookMatch": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code",
+            "description": "Mã hạng mục chuẩn AICycle.",
+            "examples": [
+              "AIC.000079"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Tên hạng mục chuẩn.",
+            "examples": [
+              "Cánh cửa mộc trước bên trái"
+            ]
+          },
+          "item_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Item Type",
+            "description": "Nhóm hạng mục trong codebook, ví dụ `part`."
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "name"
+        ],
+        "title": "CodebookMatch"
+      },
+      "Estimate": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "title": "Job Id",
+            "description": "Mã job; dùng để hỏi lại trạng thái qua `GET /v1/estimates/{job_id}`."
+          },
+          "reference_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Id",
+            "description": "Mã tham chiếu phía khách gửi lên, trả lại nguyên văn."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "success",
+              "failed"
+            ],
+            "title": "Status"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "status_url": {
+            "type": "string",
+            "title": "Status Url",
+            "description": "Đường dẫn để hỏi lại trạng thái/kết quả."
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EstimateResult"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Chỉ có khi `status = success`."
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PartnerError"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Chỉ có khi `status = failed`."
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "status",
+          "status_url"
+        ],
+        "title": "Estimate"
+      },
+      "EstimateDocument": {
+        "properties": {
+          "estimate_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimate Number",
+            "description": "Số báo giá, nguyên văn.",
+            "examples": [
+              "1889"
+            ]
+          },
+          "date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date",
+            "description": "Ngày báo giá, giữ nguyên văn như trên tài liệu.",
+            "examples": [
+              "28 tháng 09 năm 2026"
+            ]
+          },
+          "vehicle_plate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vehicle Plate",
+            "description": "Biển số xe, nguyên văn.",
+            "examples": [
+              "50E26280"
+            ]
+          },
+          "vehicle_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vehicle Model",
+            "description": "Hiệu/loại xe, nguyên văn."
+          },
+          "vin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vin",
+            "description": "Số khung (VIN), nguyên văn."
+          }
+        },
+        "type": "object",
+        "title": "EstimateDocument"
+      },
+      "EstimateItem": {
+        "properties": {
+          "index": {
+            "type": "integer",
+            "title": "Index",
+            "description": "Thứ tự dòng trên báo giá, bắt đầu từ 0."
+          },
+          "raw_section": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Raw Section",
+            "description": "Tên nhóm/section nguyên văn."
+          },
+          "section_type": {
+            "type": "string",
+            "title": "Section Type",
+            "description": "`service` | `paint_service` | `material` | `unknown`."
+          },
+          "raw_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Raw Code",
+            "description": "Mã dòng nguyên văn (nếu có)."
+          },
+          "raw_name": {
+            "type": "string",
+            "title": "Raw Name",
+            "description": "Tên hạng mục nguyên văn.",
+            "examples": [
+              "Sơn cửa trước Trái"
+            ]
+          },
+          "operation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operation",
+            "description": "Thao tác chính: `paint` | `repair` | `bodywork` | `remove_install` | `replace` | `weld` | `reshape` | `polish` | `clean` | `other`."
+          },
+          "vehicle_part": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vehicle Part",
+            "description": "Bộ phận xe nhắc tới trong tên.",
+            "examples": [
+              "cửa trước trái"
+            ]
+          },
+          "item_name": {
+            "type": "string",
+            "title": "Item Name",
+            "description": "Tên hạng mục đã chuẩn hoá nhẹ."
+          },
+          "category": {
+            "type": "string",
+            "title": "Category",
+            "description": "`material` (phụ tùng/vật tư) | `labor` (công) | `paint` (sơn)."
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "quantity": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantity"
+          },
+          "unit_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit Price"
+          },
+          "discount_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Discount Rate"
+          },
+          "discount_amount": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Discount Amount"
+          },
+          "tax_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tax Rate"
+          },
+          "tax_amount": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tax Amount"
+          },
+          "amount": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount",
+            "description": "Thành tiền như ghi trên tài liệu (không tự tính)."
+          },
+          "material_amount": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Material Amount"
+          },
+          "labor_amount": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Labor Amount"
+          },
+          "paint_amount": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paint Amount"
+          },
+          "material_discount_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Material Discount Rate"
+          },
+          "labor_discount_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Labor Discount Rate"
+          },
+          "paint_discount_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paint Discount Rate"
+          },
+          "material_tax_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Material Tax Rate"
+          },
+          "labor_tax_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Labor Tax Rate"
+          },
+          "paint_tax_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paint Tax Rate"
+          },
+          "source_evidence": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Evidence",
+            "description": "Đoạn trích nguyên văn làm căn cứ cho dòng."
+          },
+          "mapping": {
+            "$ref": "#/components/schemas/ItemMapping"
+          }
+        },
+        "type": "object",
+        "required": [
+          "index",
+          "section_type",
+          "raw_name",
+          "item_name",
+          "category",
+          "mapping"
+        ],
+        "title": "EstimateItem",
+        "description": "Một dòng hạng mục trên báo giá. Số tiền là VND; tỷ lệ là phần trăm (8% → 8). Null = không có trên tài liệu."
+      },
+      "EstimateResult": {
+        "properties": {
+          "document": {
+            "$ref": "#/components/schemas/EstimateDocument"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EstimateItem"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "document",
+          "items"
+        ],
+        "title": "EstimateResult"
+      },
+      "ItemMapping": {
+        "properties": {
+          "method": {
+            "type": "string",
+            "enum": [
+              "exact",
+              "ai",
+              "unmatched"
+            ],
+            "title": "Method",
+            "description": "`exact`: khớp chính xác mã/tên; `ai`: AI đối chiếu; `unmatched`: chưa tìm được mã chuẩn."
+          },
+          "matches": {
+            "items": {
+              "$ref": "#/components/schemas/CodebookMatch"
+            },
+            "type": "array",
+            "title": "Matches",
+            "description": "Các hạng mục chuẩn khớp, rỗng nếu `unmatched`."
+          }
+        },
+        "type": "object",
+        "required": [
+          "method",
+          "matches"
+        ],
+        "title": "ItemMapping"
+      },
+      "PartnerError": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code",
+            "examples": [
+              "PROCESSING_FAILED"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "examples": [
+              "Không xử lý được báo giá"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "PartnerError"
+      },
+      "PartnerErrorResponse": {
+        "properties": {
+          "detail": {
+            "$ref": "#/components/schemas/PartnerError"
+          }
+        },
+        "type": "object",
+        "required": [
+          "detail"
+        ],
+        "title": "PartnerErrorResponse"
+      }
+    },
+    "securitySchemes": {
+      "APIKeyHeader": {
+        "type": "apiKey",
+        "description": "Key do AICycle cấp riêng cho từng khách hàng.",
+        "in": "header",
+        "name": "X-API-Key"
+      }
+    }
+  },
+  "servers": [
+    {
+      "url": "/partner"
+    }
+  ]
+}

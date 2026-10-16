@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>VRE · Hệ thống đọc & đối chiếu báo giá tự động</title>
+  <title>AICycle · Hệ thống đọc & đối chiếu báo giá tự động</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -86,10 +86,9 @@
         <div class="h-8 w-px bg-slate-700/60 hidden sm:block"></div>
         <div>
           <div class="flex items-center gap-2">
-            <span class="text-xs font-bold tracking-wider uppercase text-teal-400">AICycle VRE</span>
+            <h1 class="text-sm font-semibold tracking-tight text-white sm:text-base leading-none">Hệ thống Trích xuất & Đối chiếu Báo giá Sửa chữa</h1>
             <span class="bg-navy-800 text-slate-300 text-[10px] px-1.5 py-0.5 rounded font-mono font-medium border border-slate-700">v1.0</span>
           </div>
-          <h1 class="text-sm font-semibold tracking-tight text-white sm:text-base leading-none mt-0.5">Hệ thống Trích xuất & Đối chiếu Báo giá Sửa chữa</h1>
         </div>
       </div>
       
@@ -932,7 +931,7 @@
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `vre-estimate-${currentResult.job_id || 'result'}.json`;
+      a.download = `bao-gia-${currentResult.job_id || 'result'}.json`;
       a.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     });

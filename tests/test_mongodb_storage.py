@@ -58,6 +58,15 @@ class MongoStorageTests(unittest.TestCase):
         path.write_text(json.dumps(payload))
         self.assertEqual(build_run_document(self.run_dir)["input"]["sha256"], "a" * 64)
 
+    def test_source_and_original_file_name_are_stored(self):
+        source = {"channel": "partner", "client": "acme", "reference_id": "CLAIM-1", "job_id": "j1"}
+        result = build_run_document(self.run_dir, source=source, file_name="bao gia.jpg")
+        self.assertEqual(result["source"], source)
+        self.assertEqual(result["input"]["file_name"], "bao gia.jpg")
+        cli = build_run_document(self.run_dir)  # CLI: không có nguồn, tên file lấy từ đường dẫn
+        self.assertIsNone(cli["source"])
+        self.assertEqual(cli["input"]["file_name"], "estimate.jpg")
+
     def test_legacy_run_without_digest_remains_readable(self):
         self.assertIsNone(build_run_document(self.run_dir)["input"]["sha256"])
 
