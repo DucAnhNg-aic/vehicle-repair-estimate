@@ -1,9 +1,18 @@
 .env
+.env.*
+!.env.example
 nginx/auth/
 .venv/
 __pycache__/
 .pytest_cache/
 outputs/
+*.py[cod]
+*.log
+
+# Tooling agent cục bộ
+.agents/
+.claude/
+skills-lock.json
 
 # Tài liệu riêng / dữ liệu
 data/img/

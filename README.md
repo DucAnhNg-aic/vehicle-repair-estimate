@@ -289,7 +289,7 @@ Cấu hình hiện tại là HTTP cho LAN. Trước khi public Internet, cần d
 không mã hóa thông tin đăng nhập. Chưa có quota tổng chi phí Gemini hoặc giới hạn queue.
 Chạy kiểm tra XSS: `node tests/test_demo_xss.js`.
 
-UI demo nằm tại `/demo` trên cùng địa chỉ API (ví dụ `http://192.168.80.24:8000/demo`).
+UI demo nằm tại `/demo` trên cùng địa chỉ API (ví dụ `http://<IP_ADDRESS>:8000/demo`).
 Chọn file, thiết lập options và bấm xử lý; UI tự theo dõi job và hiển thị kết quả,
 thời gian/chi phí OCR và mapping, cùng nút tải JSON. UI được đóng trong image API.
 
