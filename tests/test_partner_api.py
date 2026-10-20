@@ -105,8 +105,8 @@ class PartnerApiTests(unittest.IsolatedAsyncioTestCase):
         other = await self.client.get(f"/partner/v1/estimates/{job_id}", headers={"X-API-Key": OTHER_KEY})
         self.assertEqual(other.status_code, 404)  # khách khác không đọc được job
 
-    async def test_waits_default_or_custom_seconds_then_202(self):
-        response = await self.submit()  # không truyền wait_seconds -> dùng mặc định partner_max_wait_seconds=1
+    async def test_waits_up_to_max_then_202(self):
+        response = await self.submit(wait_seconds="999")  # bị hạ về partner_max_wait_seconds=1
         self.assertEqual(response.status_code, 202)
 
     async def test_failed_job(self):
