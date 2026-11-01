@@ -114,6 +114,8 @@ services:
     volumes:
       - vre_api_uploads:/tmp/vre-api/uploads
       - vre_outputs:/app/outputs
+      # File đầu vào lưu vĩnh viễn theo sha256 (mỗi nội dung một bản), metadata ở Mongo input_files
+      - vre_input_files:/app/input_files
     depends_on:
       mongodb:
         condition: service_healthy
@@ -125,3 +127,4 @@ volumes:
   vre_redis_data:
   vre_api_uploads:
   vre_outputs:
+  vre_input_files:

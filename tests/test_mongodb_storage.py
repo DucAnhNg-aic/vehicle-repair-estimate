@@ -6,7 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, Mock
 
-from storage import MongoSettings, RepairEstimateRepository, build_run_document
+from storage import MongoSettings, RepairEstimateRepository, StoredInputFile, build_run_document
 
 
 class MongoStorageTests(unittest.TestCase):
@@ -104,6 +104,38 @@ class MongoStorageTests(unittest.TestCase):
         self.assertTrue(result["created"])
         repository.close()
         client.close.assert_not_called()
+
+    def test_failed_run_without_mapping_is_stored_with_error(self):
+        (self.run_dir / "mapping.json").unlink()
+        path = self.run_dir / "summary.json"
+        payload = json.loads(path.read_text())
+        payload.update(status="failed", error="RuntimeError: Gemini timeout", input_sha256="b" * 64)
+        path.write_text(json.dumps(payload))
+        result = build_run_document(self.run_dir)
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error"], "RuntimeError: Gemini timeout")
+        self.assertEqual(result["input"]["sha256"], "b" * 64)
+        self.assertEqual((result["document"], result["items"]), ({}, []))
+
+    def test_successful_run_still_requires_mapping(self):
+        (self.run_dir / "mapping.json").unlink()
+        with self.assertRaisesRegex(ValueError, "mapping.json"):
+            build_run_document(self.run_dir)
+
+    def test_record_input_file_upserts_by_sha256(self):
+        client = MagicMock()
+        repository = RepairEstimateRepository(MongoSettings("mongodb://unused"), client=client)
+        stored = StoredInputFile(sha256="c" * 64, size=5, relative_path=f"cc/{'c' * 64}", created=False)
+        repository.record_input_file(stored, file_name="Bao Gia.JPG")
+        query, update = repository.input_files.update_one.call_args.args
+        self.assertEqual(query, {"_id": "c" * 64})
+        self.assertTrue(repository.input_files.update_one.call_args.kwargs["upsert"])
+        self.assertEqual(update["$inc"], {"run_count": 1})
+        self.assertEqual(update["$addToSet"], {"original_names": "Bao Gia.JPG"})
+        self.assertEqual(update["$setOnInsert"]["ext"], ".jpg")
+        self.assertEqual(update["$setOnInsert"]["mime_type"], "image/jpeg")
+        self.assertEqual(update["$setOnInsert"]["storage_path"], f"cc/{'c' * 64}")
+        self.assertIn("last_seen_at", update["$set"])
 
     def test_invalid_mapping_method_is_rejected(self):
         path = self.run_dir / "mapping.json"

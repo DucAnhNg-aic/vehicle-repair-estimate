@@ -26,6 +26,12 @@ from mapping.mapper import CODEBOOK_DIR
 from ocr.extractor import OUTPUT_DIR, ROOT as OCR_ROOT, extract_repair_estimate, write_json
 
 REPAIR_ESTIMATE_OUTPUT_DIR = OUTPUT_DIR / "repair_estimate_pipeline"
+RUN_DIR_FORMAT = "%Y%m%dT%H%M%S_%fZ"
+
+
+def new_run_dir(output_dir: str | Path = REPAIR_ESTIMATE_OUTPUT_DIR) -> Path:
+    """Đường dẫn run mới (chưa tạo); caller giữ lại để vẫn đọc được summary.json khi pipeline raise."""
+    return Path(output_dir) / datetime.now(timezone.utc).strftime(RUN_DIR_FORMAT)
 
 
 def run_repair_estimate_pipeline(
@@ -34,12 +40,13 @@ def run_repair_estimate_pipeline(
     codebook_dir: str | Path = CODEBOOK_DIR, prompt_path: str | Path = OCR_ROOT / "prompt.py",
     timeout: float = 180, verbose: bool = True, cache=None,
     ocr_thinking_level: str | None = None, mapping_thinking_level: str | None = None,
+    run_dir: str | Path | None = None,
 ) -> dict:
     """Chạy OCR rồi mapping; trả về summary (cũng được ghi ra ``summary.json``)."""
     log = print if verbose else (lambda *args, **kwargs: None)
     file_path = Path(file_path).resolve()
     started_at = datetime.now(timezone.utc)
-    run_dir = Path(output_dir) / started_at.strftime("%Y%m%dT%H%M%S_%fZ")
+    run_dir = Path(run_dir) if run_dir is not None else Path(output_dir) / started_at.strftime(RUN_DIR_FORMAT)
     run_dir.mkdir(parents=True)
     mapping_model = mapping_model or model
     summary = {

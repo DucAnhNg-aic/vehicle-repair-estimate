@@ -6,6 +6,7 @@ nginx/auth/
 __pycache__/
 .pytest_cache/
 outputs/
+input_files/
 *.py[cod]
 *.log
 

@@ -1,7 +1,8 @@
-"""Store and query completed Vehicle Repair Estimate pipeline runs."""
+"""Store and query Vehicle Repair Estimate pipeline runs (thành công lẫn lỗi) và file đầu vào."""
 from __future__ import annotations
 
 import json
+import mimetypes
 import os
 import re
 from dataclasses import dataclass
@@ -13,12 +14,15 @@ from pymongo import ASCENDING, DESCENDING, MongoClient
 from pymongo.collection import Collection
 from repair_estimate_pipeline.metrics import build_metrics
 
+from .input_files import StoredInputFile
+
 
 @dataclass(frozen=True)
 class MongoSettings:
     uri: str
     database: str = "vehicle_repair_estimate"
     collection: str = "repair_estimates"
+    input_files_collection: str = "input_files"
 
     @classmethod
     def from_env(cls, env_file: str | Path | None = None) -> "MongoSettings":
@@ -31,6 +35,7 @@ class MongoSettings:
             uri=uri,
             database=os.getenv("MONGO_DATABASE", cls.database),
             collection=os.getenv("MONGO_COLLECTION", cls.collection),
+            input_files_collection=os.getenv("MONGO_INPUT_FILES_COLLECTION", cls.input_files_collection),
         )
 
 
@@ -38,7 +43,7 @@ def _load_mongo_env(path: Path) -> None:
     """Load only MongoDB variables; never execute or print the env file."""
     if not path.is_file():
         return
-    allowed = {"MONGO_URI", "MONGO_DATABASE", "MONGO_COLLECTION"}
+    allowed = {"MONGO_URI", "MONGO_DATABASE", "MONGO_COLLECTION", "MONGO_INPUT_FILES_COLLECTION"}
     for raw_line in path.read_text(encoding="utf-8").splitlines():
         line = raw_line.strip()
         if not line or line.startswith("#"):
@@ -73,10 +78,14 @@ def build_run_document(run_dir: str | Path, *, source: dict[str, Any] | None = N
 
     ``source``: kênh gọi (``channel`` demo/partner, ``client``, ``reference_id``, ``job_id``); None khi chạy CLI.
     ``file_name``: tên file gốc người dùng upload (API lưu file tạm dưới tên ``<job_id>.<ext>``).
+    Run lỗi trước khi ghi ``mapping.json`` vẫn lưu được, với ``document``/``items`` rỗng.
     """
     run_dir = Path(run_dir).resolve()
     summary = _read_json(run_dir / "summary.json")
-    mapping = _read_json(run_dir / "mapping.json")
+    if summary.get("status") != "success" and not (run_dir / "mapping.json").is_file():
+        mapping = {"document": {}, "items": []}
+    else:
+        mapping = _read_json(run_dir / "mapping.json")
     items = mapping.get("items")
     document = mapping.get("document")
     if not isinstance(items, list) or not isinstance(document, dict):
@@ -129,6 +138,7 @@ class RepairEstimateRepository:
             settings.uri, serverSelectionTimeoutMS=5000, appname="vre-pipeline"
         )
         self.collection: Collection = self.client[settings.database][settings.collection]
+        self.input_files: Collection = self.client[settings.database][settings.input_files_collection]
 
     def ping(self) -> None:
         self.client.admin.command("ping")
@@ -154,6 +164,20 @@ class RepairEstimateRepository:
             "matched_count": result.matched_count,
             "modified_count": result.modified_count,
         }
+
+    def record_input_file(self, stored: StoredInputFile, *, file_name: str | None = None) -> None:
+        """Ghi nhận một lần dùng file; ``_id`` là sha256 nên mỗi nội dung chỉ có một document."""
+        now = datetime.now(timezone.utc)
+        suffix = Path(file_name or "").suffix.lower()
+        update: dict[str, Any] = {
+            "$setOnInsert": {"size": stored.size, "storage_path": stored.relative_path, "ext": suffix or None,
+                             "mime_type": mimetypes.guess_type(f"x{suffix}")[0], "first_seen_at": now},
+            "$set": {"last_seen_at": now},
+            "$inc": {"run_count": 1},
+        }
+        if file_name:
+            update["$addToSet"] = {"original_names": file_name}
+        self.input_files.update_one({"_id": stored.sha256}, update, upsert=True)
 
     def list_results(
         self, *, limit: int = 10, vehicle_plate: str | None = None,

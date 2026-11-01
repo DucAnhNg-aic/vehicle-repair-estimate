@@ -10,7 +10,7 @@ from openpyxl import Workbook
 from cost import cost_from_response
 from ocr import RepairEstimate, RepairEstimateItem
 from ocr.schema import Document
-from repair_estimate_pipeline import run_repair_estimate_pipeline
+from repair_estimate_pipeline import new_run_dir, run_repair_estimate_pipeline
 
 MODEL = "gemini-3.8-flash"
 OCR_USAGE = {"total_input_tokens": 1800, "total_cached_tokens": 0,
@@ -114,6 +114,13 @@ class PipelineRunTests(unittest.TestCase):
         self.assertEqual(summary["steps"]["mapping"]["status"], "skipped")
         self.assertEqual(summary["total"]["cost"]["priced_calls"], 1)  # tokens đã tốn vẫn được tính
         self.assertIn("ValidationError", summary["error"])
+
+    def test_failure_summary_lands_in_caller_chosen_run_dir(self):
+        self.client.interactions.create.return_value = response({"invalid": True}, OCR_USAGE)
+        run_dir = new_run_dir(self.root / "out")
+        with self.assertRaises(ValueError):
+            self.run_vre_pipeline(run_dir=run_dir)
+        self.assertEqual(json.loads((run_dir / "summary.json").read_text())["status"], "failed")
 
 
 if __name__ == "__main__":

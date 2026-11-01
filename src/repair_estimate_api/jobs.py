@@ -69,6 +69,7 @@ async def enqueue_upload(
             "env_file": str(settings.env_file),
             "output_dir": str(settings.output_dir),
             "codebook_dir": str(settings.codebook_dir),
+            "input_store_dir": str(settings.input_store_dir),
         }
         return queue_factory().enqueue(
             "repair_estimate_api.tasks.process_repair_estimate_job",

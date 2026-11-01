@@ -14,7 +14,7 @@ def _load_api_env(path: Path) -> None:
     allowed = {
         "REDIS_URL", "GEMINI_MODEL", "OCR_MODEL", "MAPPING_MODEL", "OCR_THINKING_LEVEL", "MAPPING_THINKING_LEVEL", "VRE_API_SHOW_AI_OPTIONS",
         "VRE_API_ALLOWED_MODELS",
-        "VRE_API_QUEUE", "VRE_API_UPLOAD_DIR", "VRE_API_MAX_UPLOAD_BYTES",
+        "VRE_API_QUEUE", "VRE_API_UPLOAD_DIR", "VRE_INPUT_STORE_DIR", "VRE_API_MAX_UPLOAD_BYTES",
         "VRE_API_RESULT_TTL_SECONDS", "VRE_API_JOB_TIMEOUT_SECONDS", "VRE_API_WORKERS",
         "VRE_PARTNER_API_KEYS", "VRE_PARTNER_MAX_WAIT_SECONDS",
     }
@@ -80,6 +80,7 @@ class ApiSettings:
     show_ai_options: bool = True  # False: demo UI ẩn dropdown model/reasoning
     partner_api_keys: dict[str, str] = field(default_factory=dict)  # key → tên khách; rỗng = tắt API đối tác
     partner_max_wait_seconds: int = 90  # < 100s để đi qua được Cloudflare/proxy có timeout mặc định
+    input_store_dir: Path = PROJECT_ROOT / "input_files"  # file đầu vào lưu vĩnh viễn, mỗi sha256 một bản
 
     @classmethod
     def from_env(cls, env_file: str | Path = PROJECT_ROOT / ".env") -> "ApiSettings":
@@ -113,4 +114,5 @@ class ApiSettings:
             worker_count=_positive_int("VRE_API_WORKERS", 1),
             partner_api_keys=_partner_api_keys(os.getenv("VRE_PARTNER_API_KEYS", "")),
             partner_max_wait_seconds=_positive_int("VRE_PARTNER_MAX_WAIT_SECONDS", 90),
+            input_store_dir=Path(os.getenv("VRE_INPUT_STORE_DIR", PROJECT_ROOT / "input_files")).resolve(),
         )

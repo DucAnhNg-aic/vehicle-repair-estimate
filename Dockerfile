@@ -17,8 +17,8 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     python -m pip install -r requirements.txt
 
 COPY --chown=10001:10001 . .
-RUN mkdir -p /app/outputs /tmp/vre-api/uploads \
-    && chown -R 10001:10001 /app/outputs /tmp/vre-api
+RUN mkdir -p /app/outputs /app/input_files /tmp/vre-api/uploads \
+    && chown -R 10001:10001 /app/outputs /app/input_files /tmp/vre-api
 
 USER 10001:10001
 
