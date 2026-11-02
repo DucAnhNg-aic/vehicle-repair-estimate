@@ -1,15 +1,11 @@
 """Map an existing OCR result: python -m mapping result.json."""
 import argparse
-import os
-from contextlib import nullcontext
 from pathlib import Path
 
-from google import genai
-from google.genai import types
-
+from llm import PROVIDER_NAMES, LlmClients, default_models, default_provider
 from ocr.extractor import PROJECT_ROOT, load_env, write_json
 from ocr.schema import RepairEstimate
-from .mapper import CODEBOOK_DIR, CodebookMapper, GeminiMatcher
+from .mapper import CODEBOOK_DIR, CodebookMapper, LlmMatcher
 
 
 def main():
@@ -18,21 +14,26 @@ def main():
     parser.add_argument("--output", type=Path, default=Path("outputs/mapping.json"))
     parser.add_argument("--codebook-dir", type=Path, default=CODEBOOK_DIR)
     parser.add_argument("--env-file", type=Path, default=PROJECT_ROOT / ".env")
-    parser.add_argument("--model")
+    parser.add_argument("--provider", choices=sorted(PROVIDER_NAMES), help="Mặc định LLM_PROVIDER trong env/.env.")
+    parser.add_argument("--model", help="claude-... hoặc gemini-...; mặc định <PROVIDER>_MAPPING_MODEL của provider.")
     parser.add_argument("--timeout", type=float, default=180)
-    parser.add_argument("--exact-only", action="store_true", help="Test exact match offline, không gọi Gemini")
+    parser.add_argument("--exact-only", action="store_true", help="Test exact match offline, không gọi LLM")
     args = parser.parse_args()
     if args.timeout <= 0:
         parser.error("--timeout phải lớn hơn 0")
     estimate = RepairEstimate.model_validate_json(args.result.read_text(encoding="utf-8"))
     load_env(args.env_file)
-    model = args.model or os.getenv("MAPPING_MODEL") or os.getenv("GEMINI_MODEL") or "gemini-3.6-flash"
-    if not args.exact_only and not os.getenv("GEMINI_API_KEY"):
-        parser.error("Thiếu GEMINI_API_KEY; dùng --exact-only để test offline")
-    with (nullcontext(None) if args.exact_only else genai.Client(
-        api_key=os.getenv("GEMINI_API_KEY"), http_options=types.HttpOptions(timeout=int(args.timeout * 1000))
-    )) as client:
-        matcher = GeminiMatcher(client, model, context_cache_dir=args.output.parent / ".gemini_context_cache") if client else None
+    try:
+        model = args.model or default_models(args.provider or default_provider())[1]
+    except ValueError as exc:
+        parser.error(str(exc))
+    with LlmClients(args.timeout, backend_options={"gemini": {"context_cache_dir": args.output.parent / ".gemini_context_cache"}}) as llm:
+        if not args.exact_only:
+            try:
+                llm.require(model)
+            except (RuntimeError, ValueError) as exc:
+                parser.error(f"{exc}; dùng --exact-only để test offline")
+        matcher = None if args.exact_only else LlmMatcher(llm.backend(model), model)
         mapper = CodebookMapper(matcher=matcher, codebook_dir=args.codebook_dir)
         args.output.parent.mkdir(parents=True, exist_ok=True)
         try:
@@ -45,7 +46,7 @@ def main():
     print(f"Đã map {len(results)} dòng: {args.output}")
     if matcher:
         total = matcher.cost_summary()
-        print(f"Gemini fallback: {total['calls']} lời gọi; chi phí ước tính ${total['total_usd']:.6f} USD"
+        print(f"LLM fallback ({model}): {total['calls']} lời gọi; chi phí ước tính ${total['total_usd']:.6f} USD"
               + ("" if total["complete"] else f" (thiếu {total['unpriced_calls']} lời gọi chưa định giá)"))
 
 

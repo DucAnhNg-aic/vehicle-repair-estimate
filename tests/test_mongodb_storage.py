@@ -19,7 +19,7 @@ class MongoStorageTests(unittest.TestCase):
             "status": "success",
             "input": "/data/estimate.jpg",
             "started_at": "2026-10-06T01:02:03+00:00",
-            "models": {"ocr": "test", "mapping": "test"},
+            "models": {"ocr": "gemini-3.8-flash", "mapping": "claude-haiku-5-5"},
             "total": {"seconds": 4.2, "cost": {"total_usd": 0.01}},
             "steps": {
                 "ocr": {"seconds": 3, "cost": {"total_usd": 0.007}},
@@ -39,7 +39,7 @@ class MongoStorageTests(unittest.TestCase):
         result = build_run_document(self.run_dir)
         self.assertEqual(result["run_id"], self.run_dir.name)
         self.assertIsInstance(result["created_at"], datetime)
-        self.assertEqual(result["updated_by"], "gemini")
+        self.assertEqual(result["updated_by"], "claude")  # provider của model mapping
         self.assertNotIn("review_required", result)
         self.assertNotIn("mapping_metrics", result)
         self.assertEqual(result["metrics"]["total"], {
@@ -144,6 +144,16 @@ class MongoStorageTests(unittest.TestCase):
         path.write_text(json.dumps(payload))
         with self.assertRaisesRegex(ValueError, "mapping.method"):
             build_run_document(self.run_dir)
+
+    def test_methods_of_both_providers_are_kept_apart(self):
+        path = self.run_dir / "mapping.json"
+        payload = json.loads(path.read_text())
+        payload["items"][0]["mapping"]["method"] = "claude"
+        payload["items"][1]["mapping"]["method"] = "gemini"
+        path.write_text(json.dumps(payload))
+        result = build_run_document(self.run_dir)
+        self.assertEqual([item["mapping"]["method"] for item in result["items"]], ["claude", "gemini"])
+        self.assertEqual(result["metrics"]["mapping"]["llm_count"], 2)
 
 
 if __name__ == "__main__":

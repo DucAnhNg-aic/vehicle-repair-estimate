@@ -1,4 +1,6 @@
-"""Luồng chính: ảnh/PDF/Markdown → OCR (Gemini) → mapping codebook (exact + Gemini fallback).
+"""Luồng chính: ảnh/PDF/Markdown → OCR (LLM) → mapping codebook (exact + LLM fallback).
+
+OCR và mapping có thể dùng provider khác nhau (Claude/Gemini, chọn theo tên model; xem ``llm``).
 
 Mỗi lần chạy tạo một thư mục riêng:
 
@@ -7,7 +9,7 @@ Mỗi lần chạy tạo một thư mục riêng:
         report.txt          báo cáo dạng text (giống log in ra terminal)
         ocr/                response.json, raw.txt, result.json, metadata.json của bước OCR
         mapping.json        các trường OCR + ``mapping`` cho từng item
-        mapping.calls.json  từng lời gọi Gemini fallback (response, usage, cost, latency)
+        mapping.calls.json  từng lời gọi LLM fallback (response, usage, cost, latency)
 
 summary.json luôn được ghi, kể cả khi một bước lỗi (lỗi vẫn được raise cho caller).
 """
@@ -20,8 +22,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from cost import sum_costs
+from llm import PROVIDER_NAMES
 from llm_cache.keys import file_digest
-from mapping import CodebookMapper, GeminiMatcher
+from mapping import CodebookMapper, LlmMatcher
 from mapping.mapper import CODEBOOK_DIR
 from ocr.extractor import OUTPUT_DIR, ROOT as OCR_ROOT, extract_repair_estimate, write_json
 
@@ -35,14 +38,17 @@ def new_run_dir(output_dir: str | Path = REPAIR_ESTIMATE_OUTPUT_DIR) -> Path:
 
 
 def run_repair_estimate_pipeline(
-    file_path: str | Path, *, model: str, client, mapping_model: str | None = None,
+    file_path: str | Path, *, model: str, llm, mapping_model: str | None = None,
     exact_only: bool = False, output_dir: str | Path = REPAIR_ESTIMATE_OUTPUT_DIR,
     codebook_dir: str | Path = CODEBOOK_DIR, prompt_path: str | Path = OCR_ROOT / "prompt.py",
     timeout: float = 180, verbose: bool = True, cache=None,
     ocr_thinking_level: str | None = None, mapping_thinking_level: str | None = None,
     run_dir: str | Path | None = None,
 ) -> dict:
-    """Chạy OCR rồi mapping; trả về summary (cũng được ghi ra ``summary.json``)."""
+    """Chạy OCR rồi mapping; trả về summary (cũng được ghi ra ``summary.json``).
+
+    ``llm``: ``llm.LlmClients`` cấp backend theo provider của ``model``/``mapping_model``; caller sở hữu.
+    """
     log = print if verbose else (lambda *args, **kwargs: None)
     file_path = Path(file_path).resolve()
     started_at = datetime.now(timezone.utc)
@@ -63,7 +69,7 @@ def run_repair_estimate_pipeline(
         log(f"[1/2] OCR: {file_path.name} (model {model}) ...", flush=True)
         step_started = time.perf_counter()
         try:
-            estimate = extract_repair_estimate(file_path, model=model, client=client, prompt_path=prompt_path,
+            estimate = extract_repair_estimate(file_path, model=model, backend=llm.backend(model), prompt_path=prompt_path,
                                                run_dir=run_dir / "ocr", timeout=timeout, verbose=False, cache=cache,
                                                thinking_level=ocr_thinking_level)
         finally:
@@ -81,10 +87,10 @@ def run_repair_estimate_pipeline(
 
         # ---- Bước 2: Mapping ----
         log(f"[2/2] Mapping: {len(estimate.items)} hạng mục "
-            f"({'exact-only' if exact_only else f'exact + Gemini fallback {mapping_model}'}) ...", flush=True)
+            f"({'exact-only' if exact_only else f'exact + LLM fallback {mapping_model}'}) ...", flush=True)
         step_started = time.perf_counter()
-        matcher = None if exact_only else GeminiMatcher(client, mapping_model, cache=cache, thinking_level=mapping_thinking_level,
-            context_cache_dir=Path(output_dir) / ".gemini_context_cache")
+        matcher = None if exact_only else LlmMatcher(llm.backend(mapping_model), mapping_model, cache=cache,
+                                                     thinking_level=mapping_thinking_level)
         mapper = CodebookMapper(matcher=matcher, codebook_dir=codebook_dir)
         try:
             results = mapper.map_repair_estimate(estimate)
@@ -100,9 +106,9 @@ def run_repair_estimate_pipeline(
                 status=summary["steps"]["mapping"]["status"] if summary["steps"]["mapping"]["status"] == "success" else "failed",
                 seconds=round(time.perf_counter() - step_started, 3),
                 result=str(run_dir / "mapping.json"),
-                gemini_calls=len(calls),
+                llm_calls=len(calls),
                 invalid_selections=sum(len(call.get("invalid_selections", [])) for call in calls),
-                context_cache=[call["context_cache"] for call in calls if call.get("context_cache")],
+                context_cache=[call["context_cache"] for call in calls if call.get("context_cache")],  # Gemini
                 cache_hits=matcher.cache_hits if matcher else 0,
                 cache_misses=matcher.cache_misses if matcher else 0,
                 cost=sum_costs(call["cost"] for call in calls),
@@ -150,8 +156,12 @@ def _tokens(cost: dict | None) -> str:
     tokens = (cost or {}).get("tokens") or {}
     if not tokens:
         return ""
-    return (f"in {tokens['total_input_tokens']:,} · out {tokens['total_output_tokens']:,}"
-            f" · think {tokens['total_thought_tokens']:,} token")
+    text = f"in {tokens['total_input_tokens']:,} · out {tokens['total_output_tokens']:,}"
+    if tokens.get("total_cached_tokens") or tokens.get("total_cache_write_tokens"):
+        text += f" (cache đọc {tokens['total_cached_tokens']:,} · ghi {tokens.get('total_cache_write_tokens', 0):,})"
+    if tokens.get("total_thought_tokens"):  # Claude tính thinking chung trong output
+        text += f" · think {tokens['total_thought_tokens']:,}"
+    return text + " token"
 
 
 def format_report(summary: dict) -> str:
@@ -165,22 +175,22 @@ def format_report(summary: dict) -> str:
     out.append(f"[1] OCR      {ocr['status']:<8} {ocr.get('seconds', 0):>7.1f}s  "
                f"{ocr.get('items', 0)} hạng mục ({detail})" if "items" in ocr else
                f"[1] OCR      {ocr['status']:<8} {ocr.get('seconds', 0):>7.1f}s")
-    out.append("    cost - (trúng cache, không gọi Gemini)" if ocr.get("cache_hit") else
+    out.append("    cost - (trúng cache, không gọi LLM)" if ocr.get("cache_hit") else
                f"    cost {_usd(ocr.get('cost'))}  {_tokens(ocr.get('cost'))}")
     methods = ", ".join(f"{k} {v}" for k, v in mapping.get("methods", {}).items())
     cache_note = f" · {mapping['cache_hits']} item từ cache" if mapping.get("cache_hits") else ""
     out.append(f"[2] Mapping  {mapping['status']:<8} {mapping.get('seconds', 0):>7.1f}s  "
-               f"{methods or '-'}; {mapping.get('gemini_calls', 0)} lời gọi Gemini{cache_note}")
+               f"{methods or '-'}; {mapping.get('llm_calls', 0)} lời gọi LLM{cache_note}")
     out.append(f"    cost {_usd(mapping.get('cost'))}  {_tokens(mapping.get('cost'))}")
     out.append(line)
     out.append(f"TỔNG              {total.get('seconds', 0):>7.1f}s  cost {_usd(total.get('cost'))}  "
-               f"({total.get('cost', {}).get('calls', 0)} lời gọi Gemini)")
+               f"({total.get('cost', {}).get('calls', 0)} lời gọi LLM)")
     out.append(f"    {_tokens(total.get('cost'))}")
     if summary["items"]:
         out.append(line)
         for i, item in enumerate(summary["items"], 1):
             codes = ", ".join(item["codes"]) or "-"
-            target = f" → {item['matched_name']}" if item["method"] == "gemini" else ""
+            target = f" → {item['matched_name']}" if item["method"] in PROVIDER_NAMES else ""
             out.append(f"{i:>3}. [{item['category']:<8}] {item['method']:<9} {codes:<24} {item['raw_name']}{target}")
     if summary["error"]:
         out.append(line)

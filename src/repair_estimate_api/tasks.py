@@ -3,14 +3,12 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 from contextlib import ExitStack
 from pathlib import Path
 
-from google import genai
-from google.genai import types
 from rq import get_current_job
 
+from llm import LlmClients
 from llm_cache import TwoTierCache
 from ocr.extractor import load_env
 from repair_estimate_pipeline import new_run_dir, run_repair_estimate_pipeline
@@ -52,10 +50,12 @@ def process_repair_estimate_job(file_path: str, options: dict, server: dict) -> 
               "reference_id": meta.get("reference_id"), "job_id": job.id if job else None}
     try:
         load_env(env_file)
-        api_key = os.environ.get("GEMINI_API_KEY")
-        if not api_key:
-            raise RuntimeError("Server chưa cấu hình GEMINI_API_KEY")
+        # Mỗi provider (Claude/Gemini) một client, mở khi model của job cần tới.
+        llm = LlmClients(options["timeout_seconds"], backend_options={
+            "gemini": {"context_cache_dir": Path(server["output_dir"]) / ".gemini_context_cache"}})
+        llm.require(options["ocr_model"], options["mapping_model"])  # thiếu API key thì báo trước khi tốn token
         with ExitStack() as stack:
+            stack.enter_context(llm)
             repository = None
             if options["save_mongodb"]:
                 repository = stack.enter_context(RepairEstimateRepository(MongoSettings.from_env(env_file)))
@@ -69,10 +69,6 @@ def process_repair_estimate_job(file_path: str, options: dict, server: dict) -> 
             cache = None
             if options["use_cache"]:
                 cache = stack.enter_context(TwoTierCache.from_env(env_file))
-            client = stack.enter_context(genai.Client(
-                api_key=api_key,
-                http_options=types.HttpOptions(timeout=int(options["timeout_seconds"] * 1000)),
-            ))
             _set_progress("ocr_mapping")
             run_dir = new_run_dir(server["output_dir"])
             try:
@@ -81,7 +77,7 @@ def process_repair_estimate_job(file_path: str, options: dict, server: dict) -> 
                     model=options["ocr_model"],
                     mapping_model=options["mapping_model"],
                     exact_only=False,
-                    client=client,
+                    llm=llm,
                     output_dir=server["output_dir"],
                     codebook_dir=server["codebook_dir"],
                     timeout=options["timeout_seconds"],

@@ -28,7 +28,7 @@ class ProcessJobTests(unittest.TestCase):
         self.pipeline = MagicMock(return_value=summary)
         for target, value in (
             ("load_env", MagicMock()), ("MongoSettings", MagicMock()), ("TwoTierCache", MagicMock()),
-            ("RepairEstimateRepository", MagicMock(return_value=self.repository)), ("genai", MagicMock()),
+            ("RepairEstimateRepository", MagicMock(return_value=self.repository)), ("LlmClients", MagicMock()),
             ("run_repair_estimate_pipeline", self.pipeline),
             ("new_run_dir", MagicMock(return_value=self.run_dir)),
             ("get_current_job", MagicMock(return_value=self.job)),
@@ -36,9 +36,6 @@ class ProcessJobTests(unittest.TestCase):
             patcher = patch.object(tasks, target, value)
             patcher.start()
             self.addCleanup(patcher.stop)
-        env = patch.dict("os.environ", {"GEMINI_API_KEY": "test"})
-        env.start()
-        self.addCleanup(env.stop)
 
     def run_job(self, save_mongodb=True):
         options = {"save_mongodb": save_mongodb, "use_cache": False, "timeout_seconds": 10,
@@ -46,6 +43,12 @@ class ProcessJobTests(unittest.TestCase):
         return tasks.process_repair_estimate_job(str(self.upload), options, {
             "env_file": "/unused/.env", "output_dir": "/unused", "codebook_dir": "/unused",
             "input_store_dir": str(self.store_dir)})
+
+    def test_clients_are_checked_for_both_models_and_passed_to_pipeline(self):
+        self.run_job()
+        llm = tasks.LlmClients.return_value
+        llm.require.assert_called_once_with("m", "m")
+        self.assertIs(self.pipeline.call_args.kwargs["llm"], llm)
 
     def test_saves_origin_and_original_file_name_then_removes_upload(self):
         result = self.run_job()

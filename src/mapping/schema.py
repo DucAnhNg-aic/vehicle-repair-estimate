@@ -1,4 +1,4 @@
-"""Schemas for codebook mapping and Gemini batch fallback."""
+"""Schemas for codebook mapping and LLM batch fallback."""
 from __future__ import annotations
 
 from typing import Literal
@@ -19,20 +19,13 @@ class MappingResult(StrictModel):
     raw_name: str
     category: Literal["material", "labor", "paint"]
     codebook: str
-    method: Literal["exact", "gemini", "unmatched"]
+    method: Literal["exact", "claude", "gemini", "unmatched"]  # claude/gemini: provider đã map item
     matches: list[CodebookRow]
 
 
-class ItemSelection(StrictModel):
+class WorkItemSelection(StrictModel):
     index: int = Field(description="Chỉ số của hạng mục trong danh sách `items` đầu vào (bắt đầu từ 0).")
     name: str | None = Field(description="Một tên nguyên văn trong danh sách `names`, hoặc null nếu không có tên tương ứng.")
-
-
-class BatchSelection(StrictModel):
-    selections: list[ItemSelection] = Field(description="Đúng một kết quả cho mỗi hạng mục đầu vào.")
-
-
-class WorkItemSelection(ItemSelection):
     item_type: Literal["part", "service"] | None = Field(
         description="Nhóm chứa name đã chọn; null khi name null.")
 

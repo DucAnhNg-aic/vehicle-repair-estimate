@@ -12,6 +12,8 @@ from typing import Any
 
 from pymongo import ASCENDING, DESCENDING, MongoClient
 from pymongo.collection import Collection
+
+from llm import PROVIDER_NAMES, provider_name
 from repair_estimate_pipeline.metrics import build_metrics
 
 from .input_files import StoredInputFile
@@ -94,7 +96,7 @@ def build_run_document(run_dir: str | Path, *, source: dict[str, Any] | None = N
     if "quotation_number" in document and "estimate_number" not in document:
         document["estimate_number"] = document.pop("quotation_number")
 
-    methods = {"exact": 0, "gemini": 0, "unmatched": 0}
+    methods = {"exact": 0, "unmatched": 0, **{name: 0 for name in PROVIDER_NAMES}}
     stored_items = []
     for index, item in enumerate(items):
         if not isinstance(item, dict) or not isinstance(item.get("mapping"), dict):
@@ -114,6 +116,7 @@ def build_run_document(run_dir: str | Path, *, source: dict[str, Any] | None = N
         created_at = created_at.replace(tzinfo=timezone.utc)
 
     source_path = Path(summary.get("input") or "")
+    models = summary.get("models") or {}
     return {
         "run_id": run_dir.name,
         "created_at": created_at,
@@ -121,8 +124,9 @@ def build_run_document(run_dir: str | Path, *, source: dict[str, Any] | None = N
                   "sha256": summary.get("input_sha256")},
         "status": summary.get("status", "unknown"),
         "source": source,
-        "updated_by": "gemini",
-        "models": summary.get("models") or {},
+        # Provider đã map (hoặc OCR khi exact-only); None nếu tên model không thuộc provider nào.
+        "updated_by": provider_name(models.get("mapping")) or provider_name(models.get("ocr")),
+        "models": models,
         "document": document,
         "items": stored_items,
         "metrics": build_metrics(summary, item_count=len(items), methods=methods),

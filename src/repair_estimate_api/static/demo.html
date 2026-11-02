@@ -162,6 +162,8 @@
 
             <!-- AI OPTIONS -->
             <div id="aiOptions" class="grid grid-cols-2 gap-3 text-xs">
+              <label id="aiProviderField" class="col-span-2 space-y-1"><span class="block font-semibold text-slate-600">Engine AI</span>
+                <select id="aiProvider" class="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-slate-700 focus:border-teal-500 focus:outline-none"></select></label>
               <label class="space-y-1"><span class="block font-semibold text-slate-600">Model OCR</span>
                 <select id="ocrModel" class="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-slate-700 focus:border-teal-500 focus:outline-none"></select></label>
               <label class="space-y-1"><span class="block font-semibold text-slate-600">Reasoning OCR</span>
@@ -170,7 +172,7 @@
                 <select id="mappingModel" class="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-slate-700 focus:border-teal-500 focus:outline-none"></select></label>
               <label class="space-y-1"><span class="block font-semibold text-slate-600">Reasoning mapping</span>
                 <select id="mappingThinking" class="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-slate-700 focus:border-teal-500 focus:outline-none"></select></label>
-              <p class="col-span-2 text-[11px] text-slate-400">Đổi model hoặc reasoning sẽ phân tích lại từ đầu; giữ nguyên thì dùng lại kết quả đã lưu.</p>
+              <p class="col-span-2 text-[11px] text-slate-400">Đổi engine, model hoặc reasoning sẽ phân tích lại từ đầu; giữ nguyên thì dùng lại kết quả đã lưu.</p>
             </div>
 
             <!-- SUBMIT BUTTON -->
@@ -435,32 +437,59 @@
       renderAiOptions();
     }
 
-    // Tên hiển thị của model: gemini-3.8-flash -> aicycle-1.8-flash (value gửi API vẫn giữ tên thật)
-    const MODEL_WORD_ALIASES = { flash: 'swift', lite: 'mini' };
+    // Tên hiển thị của model, ẩn hãng (value gửi API vẫn giữ tên thật):
+    //   gemini-3.8-flash -> aicycle-1.8-swift, gemini-3.5-flash-lite -> aicycle-1.5-swift-mini
+    //   claude-opus-5-5 -> aicycle-5.5-ultra, claude-sonnet-5-5 -> aicycle-5.5-pro, claude-haiku-5-5 -> aicycle-5.5-air
+    const MODEL_WORD_ALIASES = { flash: 'swift', lite: 'mini', opus: 'ultra', sonnet: 'pro', haiku: 'air' };
     function displayModelName(model) {
       if (!model) return model;
       return String(model)
         .replace(/^gemini-(\d+)/i, (_, major) => `aicycle-${Math.max(Number(major) - 2, 0)}`)
+        .replace(/^claude-([a-z]+)-(\d+)(?:-(\d{1,2}))?(?:-\d{8})?$/i,
+          (_, tier, major, minor) => `aicycle-${minor ? `${major}.${minor}` : major}-${tier}`)
         .replace(/[a-z]+/gi, word => MODEL_WORD_ALIASES[word.toLowerCase()] || word);
     }
-    // Dropdown model/reasoning: "Auto" = dùng cấu hình mặc định của server (value rỗng)
+    // Engine = provider của server, đặt tên theo số hiệu model đã đổi (AICycle 1.x, AICycle 5.x) để không lộ hãng
+    function engineLabel(provider) {
+      const shown = displayModelName(provider.default_ocr_model);
+      const major = shown.match(/^aicycle-(\d+)/i)?.[1];
+      return major ? `AICycle ${major}.x` : shown;
+    }
+    // Dropdown engine/model/reasoning: "Auto" = dùng cấu hình mặc định của server (value rỗng).
+    // Dựng lại mỗi lần gọi nhưng giữ lựa chọn cũ nếu vẫn còn trong danh sách.
     function fillSelect(id, values, autoLabel, labelFn = v => v) {
       const select = $(id);
-      if (select.dataset.ready) return;
-      select.dataset.ready = '1';
-      select.add(new Option(autoLabel, ''));
+      const previous = select.value;
+      select.replaceChildren(new Option(autoLabel, ''));
       values.forEach(value => select.add(new Option(labelFn(value), value)));
+      select.value = values.includes(previous) ? previous : '';
+    }
+    // Engine "Auto" = provider mặc định (phần tử đầu trong demo-config)
+    function selectedProvider() {
+      const providers = appConfig?.providers || [];
+      return providers.find(p => p.name === $('aiProvider').value) || providers[0];
+    }
+    // Model OCR/mapping chỉ liệt kê model của engine đang chọn: một job dùng một engine
+    function renderModelOptions() {
+      const provider = selectedProvider();
+      if (!provider) return;
+      fillSelect('ocrModel', provider.models, `Auto (${displayModelName(provider.default_ocr_model)})`, displayModelName);
+      fillSelect('mappingModel', provider.models, `Auto (${displayModelName(provider.default_mapping_model)})`, displayModelName);
     }
     function renderAiOptions() {
       if (!appConfig) return;
       $('aiOptions').classList.toggle('hidden', appConfig.show_ai_options === false);
-      const models = appConfig.models || [];
+      const providers = appConfig.providers || [];
+      const byName = Object.fromEntries(providers.map(p => [p.name, p]));
+      $('aiProviderField').classList.toggle('hidden', providers.length < 2);
+      fillSelect('aiProvider', providers.map(p => p.name),
+        providers.length ? `Auto (${engineLabel(providers[0])})` : 'Auto', name => engineLabel(byName[name]));
+      renderModelOptions();
       const levels = appConfig.thinking_levels || [];
-      fillSelect('ocrModel', models, `Auto (${displayModelName(appConfig.default_model)})`, displayModelName);
-      fillSelect('mappingModel', models, `Auto (${displayModelName(appConfig.default_mapping_model)})`, displayModelName);
       fillSelect('ocrThinking', levels, `Auto (${appConfig.default_ocr_thinking_level || 'mặc định model'})`);
       fillSelect('mappingThinking', levels, `Auto (${appConfig.default_mapping_thinking_level})`);
     }
+    $('aiProvider').addEventListener('change', renderModelOptions);
 
     // ---- Tab lịch sử: xem lại kết quả các lần chạy trước (giờ Việt Nam) ----
     const VN_TIME_FORMAT = new Intl.DateTimeFormat('vi-VN', {
@@ -535,7 +564,7 @@
       styleHistoryItem(button);
       const title = [run.vehicle_plate, run.estimate_number].filter(Boolean).join(' · ') || run.file_name || run.run_id;
       const stats = run.item_count == null ? '' :
-        `${run.item_count} hạng mục · ${run.exact_count || 0} exact · ${run.gemini_count || 0} AI · ${run.unmatched_count || 0} chưa khớp`;
+        `${run.item_count} hạng mục · ${run.exact_count || 0} exact · ${run.llm_count || 0} AI · ${run.unmatched_count || 0} chưa khớp`;
       button.append(
         historyLine(title, 'text-xs font-bold text-slate-800 truncate'),
         historyLine(`${formatVnTime(run.created_at)} · ${run.file_name || ''}`, 'text-[11px] text-slate-500 truncate mt-0.5'),
@@ -730,7 +759,7 @@
       } else {
         $('mapCacheBadge').classList.add('hidden');
       }
-      $('metricMapDetail').textContent = `${mapMetric.item_count || 0} hạng mục · ${mapMetric.gemini_calls || 0} lượt xử lý`;
+      $('metricMapDetail').textContent = `${mapMetric.item_count || 0} hạng mục · ${mapMetric.llm_calls ?? mapMetric.gemini_calls ?? 0} lượt xử lý`;
 
       // 3. Render Table
       renderTableRows(data.items || []);
@@ -864,6 +893,7 @@
         formData.append('file', file);
         formData.append('options', JSON.stringify({
           use_cache: useCache,
+          provider: $('aiProvider').value || null,
           ocr_model: $('ocrModel').value || null,
           mapping_model: $('mappingModel').value || null,
           ocr_thinking_level: $('ocrThinking').value || null,

@@ -46,8 +46,8 @@ class RepairEstimateApiTests(unittest.IsolatedAsyncioTestCase):
         self.root = Path(temp.name)
         self.queue = FakeQueue()
         self.settings = ApiSettings(
-            env_file=self.root / ".env", redis_url="redis://unused", default_model="gemini-3.8-flash",
-            allowed_models=frozenset({"gemini-3.8-flash"}), queue_name="test",
+            env_file=self.root / ".env", redis_url="redis://unused", providers={"claude": ("claude-opus-5-5", "claude-opus-5-5")},
+            allowed_models=frozenset({"claude-opus-5-5"}), queue_name="test",
             upload_dir=self.root / "uploads", output_dir=self.root / "outputs", codebook_dir=self.root,
             max_upload_bytes=20, result_ttl_seconds=60, job_timeout_seconds=60,
         )
@@ -79,8 +79,8 @@ class RepairEstimateApiTests(unittest.IsolatedAsyncioTestCase):
         task, file_path, options, server, kwargs = self.queue.enqueued
         self.assertEqual(task, "repair_estimate_api.tasks.process_repair_estimate_job")
         self.assertTrue(Path(file_path).is_file())
-        self.assertEqual(options["ocr_model"], "gemini-3.8-flash")
-        self.assertEqual(options["mapping_model"], "gemini-3.8-flash")
+        self.assertEqual(options["ocr_model"], "claude-opus-5-5")
+        self.assertEqual(options["mapping_model"], "claude-opus-5-5")
         self.assertFalse(options["use_cache"])
         self.assertNotIn("env_file", options)
         self.assertEqual(server["env_file"], str(self.settings.env_file))
@@ -97,9 +97,66 @@ class RepairEstimateApiTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_demo_config_lists_models_and_levels(self):
         data = (await self.client.get("/api/v1/repair-estimate/demo-config")).json()
-        self.assertEqual(data["models"], ["gemini-3.8-flash"])
+        self.assertEqual(data["providers"], [{"name": "claude", "models": ["claude-opus-5-5"],
+                                              "default_ocr_model": "claude-opus-5-5",
+                                              "default_mapping_model": "claude-opus-5-5"}])
+        self.assertEqual(data["default_provider"], "claude")
         self.assertEqual(data["thinking_levels"], ["low", "medium", "high"])
         self.assertTrue(data["show_ai_options"])
+
+    async def use_two_providers(self):
+        """Gemini mặc định, Claude bật thêm; mỗi provider có model riêng trong allowlist."""
+        await self.client.aclose()
+        self.settings = ApiSettings(**{
+            **self.settings.__dict__,
+            "allowed_models": frozenset({"gemini-3.5-flash-lite", "gemini-3.8-flash", "claude-haiku-5-5",
+                                         "claude-sonnet-5-5"}),
+            "providers": {"gemini": ("gemini-3.5-flash-lite", "gemini-3.5-flash-lite"),
+                          "claude": ("claude-haiku-5-5", "claude-sonnet-5-5")}})
+        self.client = AsyncClient(transport=ASGITransport(app=create_app(self.settings)), base_url="http://test")
+
+    async def test_demo_config_lists_each_enabled_provider_default_first(self):
+        await self.use_two_providers()
+        data = (await self.client.get("/api/v1/repair-estimate/demo-config")).json()
+        self.assertEqual(data["default_provider"], "gemini")
+        self.assertEqual([(p["name"], p["models"]) for p in data["providers"]], [
+            ("gemini", ["gemini-3.5-flash-lite", "gemini-3.8-flash"]),
+            ("claude", ["claude-haiku-5-5", "claude-sonnet-5-5"])])
+
+    async def test_provider_choice_resolves_models_of_that_provider(self):
+        await self.use_two_providers()
+        cases = [
+            ({}, ("gemini", "gemini-3.5-flash-lite", "gemini-3.5-flash-lite")),  # mặc định server
+            ({"provider": "claude"}, ("claude", "claude-haiku-5-5", "claude-sonnet-5-5")),
+            ({"provider": "claude", "ocr_model": "claude-sonnet-5-5"}, ("claude", "claude-sonnet-5-5", "claude-sonnet-5-5")),
+            ({"ocr_model": "claude-sonnet-5-5"}, ("claude", "claude-sonnet-5-5", "claude-sonnet-5-5")),  # suy từ model
+            ({"mapping_model": "gemini-3.8-flash"}, ("gemini", "gemini-3.5-flash-lite", "gemini-3.8-flash")),
+        ]
+        for options, expected in cases:
+            with self.subTest(options=options):
+                self.assertEqual((await self.submit(options)).status_code, 202)
+                sent, meta = self.queue.enqueued[2], self.queue.enqueued[4]["meta"]
+                self.assertEqual((sent["provider"], sent["ocr_model"], sent["mapping_model"]), expected)
+                self.assertEqual(meta["provider"], expected[0])
+
+    async def test_provider_and_models_must_agree(self):
+        await self.use_two_providers()
+        cases = [
+            ({"provider": "gemini", "ocr_model": "claude-haiku-5-5"}, "MODEL_PROVIDER_MISMATCH"),
+            ({"ocr_model": "gemini-3.8-flash", "mapping_model": "claude-haiku-5-5"}, "MODEL_PROVIDER_MISMATCH"),
+            ({"provider": "openai"}, None),  # ngoài enum: lỗi validate options
+        ]
+        for options, code in cases:
+            with self.subTest(options=options):
+                response = await self.submit(options)
+                self.assertEqual(response.status_code, 422)
+                if code:
+                    self.assertEqual(response.json()["detail"]["code"], code)
+
+    async def test_provider_not_enabled_is_rejected(self):
+        response = await self.submit({"provider": "gemini"})  # setUp chỉ bật claude
+        self.assertEqual((response.status_code, response.json()["detail"]["code"]), (422, "PROVIDER_DISABLED"))
+        self.assertIsNone(self.queue.enqueued)
 
     def fake_history(self, rows=None, run=None):
         class Repo:
@@ -127,6 +184,7 @@ class RepairEstimateApiTests(unittest.IsolatedAsyncioTestCase):
         run = response.json()["runs"][0]
         self.assertTrue(run["created_at"].endswith("Z"), run["created_at"])  # UTC rõ ràng để UI đổi sang giờ VN
         self.assertEqual((run["vehicle_plate"], run["item_count"], run["cost_usd"]), ("30A-1", 3, 0.07))
+        self.assertEqual(run["llm_count"], 1)  # bản ghi cũ lưu gemini_count
         self.assertEqual((run["channel"], run["client"], run["reference_id"]), ("partner", "acme", "C-1"))
         self.assertEqual(self.history_kwargs["search"], "30A")
         self.assertIsNone(response.json()["next_before"])  # ít hơn limit: hết trang
@@ -188,7 +246,10 @@ class RepairEstimateApiTests(unittest.IsolatedAsyncioTestCase):
             },
             "storage": {"saved": True, "run_id": "run-1"},
         }
-        self.assertEqual((await self.client.get(created["result_url"])).json(), job.result)
+        # Kết quả job cũ (trước khi đổi sang Claude) vẫn đọc được, trả tên field mới.
+        mapping = (await self.client.get(created["result_url"])).json()["metrics"]["mapping"]
+        self.assertEqual((mapping["llm_count"], mapping["llm_calls"]), (1, 0))
+        self.assertNotIn("gemini_count", mapping)
 
 
 if __name__ == "__main__":

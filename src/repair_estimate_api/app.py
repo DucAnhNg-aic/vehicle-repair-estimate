@@ -10,6 +10,7 @@ from fastapi.responses import FileResponse
 from pydantic import ValidationError
 from pymongo.errors import PyMongoError
 
+from llm import provider_name
 from storage import MongoSettings, RepairEstimateRepository
 from .config import ApiSettings
 from .jobs import api_error, enqueue_upload, get_queue, public_status
@@ -32,7 +33,7 @@ def _run_summary(row: dict) -> dict:
         "vehicle_plate": document.get("vehicle_plate"), "estimate_number": document.get("estimate_number"),
         "models": row.get("models") or {},
         "item_count": mapping.get("item_count"), "exact_count": mapping.get("exact_count"),
-        "gemini_count": mapping.get("gemini_count"), "unmatched_count": mapping.get("unmatched_count"),
+        "llm_count": mapping.get("llm_count", mapping.get("gemini_count")), "unmatched_count": mapping.get("unmatched_count"),
         "duration_seconds": total.get("duration_seconds"),
         "cost_usd": (total.get("cost") or {}).get("total_usd"),
         "cache_hit": ocr.get("cache_hit"),
@@ -68,8 +69,12 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
 
     @app.get("/api/v1/repair-estimate/demo-config")
     async def demo_config() -> dict:
-        return {"models": sorted(settings.allowed_models), "default_model": settings.default_model,
-                "default_mapping_model": settings.default_mapping_model or settings.default_model,
+        # Provider mặc định đứng đầu; UI chỉ hiện tên model đã đổi, không hiện tên hãng.
+        providers = [
+            {"name": name, "default_ocr_model": ocr, "default_mapping_model": mapping,
+             "models": sorted(model for model in settings.allowed_models if provider_name(model) == name)}
+            for name, (ocr, mapping) in settings.providers.items()]
+        return {"providers": providers, "default_provider": providers[0]["name"],
                 "thinking_levels": ["low", "medium", "high"],
                 "default_ocr_thinking_level": settings.default_ocr_thinking_level,
                 "default_mapping_thinking_level": settings.default_mapping_thinking_level or "low",

@@ -1,4 +1,4 @@
-"""Extract one Vehicle Repair Estimate with Gemini: python -m ocr [file]."""
+"""Extract one Vehicle Repair Estimate (Claude hoặc Gemini theo tên model): python -m ocr [file]."""
 
 from __future__ import annotations
 
@@ -8,11 +8,10 @@ import os
 import sys
 from pathlib import Path
 
-from google import genai
-from google.genai import types
+from llm import PROVIDER_NAMES, LlmClients, Media, default_models, default_provider, get_provider, redact
 
 from .extractor import (
-    IMG_DIR, INLINE_LIMIT, OUTPUT_DIR, PROJECT_ROOT, ROOT, SUPPORTED,
+    IMG_DIR, OUTPUT_DIR, PROJECT_ROOT, ROOT, SUPPORTED,
     extract_repair_estimate, load_env, load_prompt,
 )
 
@@ -23,26 +22,33 @@ def main() -> int:
     parser.add_argument("--env-file", type=Path, default=PROJECT_ROOT / ".env")
     parser.add_argument("--prompt", type=Path, default=ROOT / "prompt.py",
                         help="File .py khai báo PROMPT hoặc file text UTF-8; mặc định prompt.py.")
-    parser.add_argument("--model", help="Ưu tiên hơn OCR_MODEL/GEMINI_MODEL trong env/.env.")
+    parser.add_argument("--provider", choices=sorted(PROVIDER_NAMES), help="Mặc định LLM_PROVIDER trong env/.env.")
+    parser.add_argument("--model", help="claude-... hoặc gemini-...; mặc định <PROVIDER>_OCR_MODEL của provider.")
     parser.add_argument("--output-dir", type=Path, default=OUTPUT_DIR)
     parser.add_argument("--timeout", type=float, default=180, help="Timeout mỗi HTTP request và chờ upload (giây).")
-    parser.add_argument("--list-models", action="store_true", help="Liệt kê model key hiện tại được truy cập.")
+    parser.add_argument("--list-models", action="store_true", help="Liệt kê model API key của provider (theo --model) truy cập được.")
     parser.add_argument("--dry-run", action="store_true", help="Kiểm tra input/config, không gọi API.")
     args = parser.parse_args()
     load_env(args.env_file)
-    model = args.model or os.getenv("OCR_MODEL") or os.getenv("GEMINI_MODEL") or "gemini-3.6-flash"
     if args.timeout <= 0:
         parser.error("--timeout phải lớn hơn 0")
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        parser.error("Thiếu GEMINI_API_KEY trong env hoặc --env-file.")
+    try:
+        model = args.model or default_models(args.provider or default_provider())[0]
+        provider = get_provider(model)
+        LlmClients(args.timeout).require(model)
+    except (RuntimeError, ValueError) as exc:
+        parser.error(str(exc))
 
     if args.list_models:
         if args.dry_run:
             parser.error("Không kết hợp --list-models với --dry-run")
-        with genai.Client(api_key=api_key, http_options=types.HttpOptions(timeout=int(args.timeout * 1000))) as client:
-            for entry in client.models.list():
-                print(entry.name)
+        module = provider.load()
+        client = module.create_client(os.environ[provider.api_key_env], args.timeout)
+        try:
+            for name in module.list_models(client):
+                print(name)
+        finally:
+            client.close()
         return 0
 
     file_path = args.file
@@ -61,14 +67,14 @@ def main() -> int:
         parser.error("Markdown rỗng.")
     if not is_markdown and mime not in SUPPORTED:
         parser.error("Chỉ hỗ trợ Markdown, PDF và ảnh JPG/PNG/WebP/HEIC/HEIF.")
-    prompt = load_prompt(args.prompt)
-    use_inline = file_path.stat().st_size <= INLINE_LIMIT
-    input_mode = "markdown_text" if is_markdown else ("inline" if use_inline else "Files API")
-    print(f"Model: {model}\nInput: {file_path}\nAPI: /v1beta/interactions\nMedia: {input_mode}", flush=True)
+    load_prompt(args.prompt)  # báo lỗi prompt hỏng trước khi gọi API
+    backend_type = provider.load().Backend
+    input_mode = backend_type.input_mode(Media(text=markdown_text) if is_markdown else Media(path=file_path, mime=mime))
+    print(f"Model: {model} ({provider.name})\nInput: {file_path}\nAPI: {backend_type.endpoint}\nMedia: {input_mode}", flush=True)
     if args.dry_run:
         return 0
 
-    extract_repair_estimate(file_path, model=model, api_key=api_key, prompt_path=args.prompt,
+    extract_repair_estimate(file_path, model=model, prompt_path=args.prompt,
                             output_dir=args.output_dir, timeout=args.timeout)
     return 0
 
@@ -78,9 +84,5 @@ if __name__ == "__main__":
         raise SystemExit(main())
     except Exception as exc:
         # Some upstream errors include request details; never expose the API key.
-        message = str(exc)
-        key = os.getenv("GEMINI_API_KEY")
-        if key:
-            message = message.replace(key, "<redacted>")
-        print(f"Lỗi: {message}", file=sys.stderr)
+        print(f"Lỗi: {redact(str(exc))}", file=sys.stderr)
         raise SystemExit(1)

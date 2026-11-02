@@ -11,7 +11,7 @@ from redis import Redis
 from rq import Queue
 from rq.job import Job
 
-from .config import ApiSettings
+from .config import ApiSettings, ModelChoiceError
 from .schemas import JobOptions
 
 SUPPORTED_SUFFIXES = {".pdf", ".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif", ".md", ".markdown"}
@@ -37,14 +37,15 @@ async def enqueue_upload(
     queue_factory: Callable[[], Queue], settings: ApiSettings, file: UploadFile,
     options: JobOptions, meta: dict | None = None,
 ) -> Job:
-    """Kiểm tra file + model, ghi file vào upload_dir rồi đưa job vào RQ. Lỗi nào cũng xoá file đã ghi."""
+    """Kiểm tra file + provider/model, ghi file vào upload_dir rồi đưa job vào RQ. Lỗi nào cũng xoá file đã ghi."""
     suffix = Path(file.filename or "").suffix.lower()
     if suffix not in SUPPORTED_SUFFIXES:
         raise api_error(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "UNSUPPORTED_FILE", "Định dạng file không hỗ trợ")
-    ocr_model = options.ocr_model or settings.default_model
-    mapping_model = options.mapping_model or settings.default_mapping_model or ocr_model
-    if {ocr_model, mapping_model} - settings.allowed_models:
-        raise api_error(status.HTTP_422_UNPROCESSABLE_CONTENT, "MODEL_NOT_ALLOWED", "Model không nằm trong allowlist")
+    try:
+        provider, ocr_model, mapping_model = settings.resolve_models(
+            options.provider, options.ocr_model, options.mapping_model)
+    except ModelChoiceError as exc:
+        raise api_error(status.HTTP_422_UNPROCESSABLE_CONTENT, exc.code, str(exc)) from exc
 
     job_id = uuid.uuid4().hex
     upload_path = settings.upload_dir / f"{job_id}{suffix}"
@@ -61,7 +62,7 @@ async def enqueue_upload(
         if size == 0:
             raise api_error(status.HTTP_422_UNPROCESSABLE_CONTENT, "EMPTY_FILE", "File rỗng")
         payload = options.model_copy(update={
-            "ocr_model": ocr_model, "mapping_model": mapping_model,
+            "provider": provider, "ocr_model": ocr_model, "mapping_model": mapping_model,
             "ocr_thinking_level": options.ocr_thinking_level or settings.default_ocr_thinking_level,
             "mapping_thinking_level": options.mapping_thinking_level or settings.default_mapping_thinking_level,
         }).model_dump()
@@ -78,7 +79,8 @@ async def enqueue_upload(
             job_timeout=settings.job_timeout_seconds,
             result_ttl=settings.result_ttl_seconds,
             failure_ttl=settings.result_ttl_seconds,
-            meta={"step": "queued", "file_name": file.filename, "sha256": digest.hexdigest(), **(meta or {})},
+            meta={"step": "queued", "file_name": file.filename, "sha256": digest.hexdigest(), "provider": provider,
+                  **(meta or {})},
         )
     except HTTPException:
         upload_path.unlink(missing_ok=True)

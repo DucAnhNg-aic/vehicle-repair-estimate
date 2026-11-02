@@ -1,6 +1,6 @@
 """Output contract; null values remain null.
 
-Mô tả từng trường nằm trong Field(description=...) và được gửi cho Gemini
+Mô tả từng trường nằm trong Field(description=...) và được gửi cho model
 qua JSON schema. Quy tắc chung (nhiệm vụ, định dạng số, ví dụ, không bỏ dòng)
 nằm trong prompt.py.
 """

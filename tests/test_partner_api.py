@@ -21,7 +21,7 @@ RESULT = {
         "item_name": "Cửa trước trái", "category": "paint", "unit": "Lần", "quantity": 1.0,
         "unit_price": 500000.0, "amount": 500000.0, "source_evidence": "Sơn cửa trước Trái",
         "mapping": {"raw_name": "Sơn cửa trước Trái", "category": "paint", "codebook": "codebook.xlsx",
-                    "method": "gemini",
+                    "method": "claude",
                     "matches": [{"code": "AIC.000079", "name": "Cánh cửa", "row": 80, "item_type": "part"}]},
     }],
     "metrics": {"total": {"duration_seconds": 50, "cost": {"total_usd": 0.01}}},
@@ -36,8 +36,8 @@ class PartnerApiTests(unittest.IsolatedAsyncioTestCase):
         root = Path(temp.name)
         self.queue = FakeQueue()
         self.settings = ApiSettings(
-            env_file=root / ".env", redis_url="redis://unused", default_model="gemini-3.8-flash",
-            allowed_models=frozenset({"gemini-3.8-flash"}), queue_name="test",
+            env_file=root / ".env", redis_url="redis://unused", providers={"claude": ("claude-opus-5-5", "claude-opus-5-5")},
+            allowed_models=frozenset({"claude-opus-5-5"}), queue_name="test",
             upload_dir=root / "uploads", output_dir=root / "outputs", codebook_dir=root,
             max_upload_bytes=20, result_ttl_seconds=60, job_timeout_seconds=60,
             partner_api_keys={KEY: "acme", OTHER_KEY: "other"}, partner_max_wait_seconds=1,
@@ -91,8 +91,23 @@ class PartnerApiTests(unittest.IsolatedAsyncioTestCase):
             {"code": "AIC.000079", "name": "Cánh cửa", "item_type": "part"}]})
         options, meta = self.queue.enqueued[2], self.queue.enqueued[4]["meta"]
         self.assertEqual((options["ocr_model"], meta["channel"], meta["client"], meta["reference_id"]),
-                         ("gemini-3.8-flash", "partner", "acme", "CLAIM-1"))
+                         ("claude-opus-5-5", "partner", "acme", "CLAIM-1"))
         self.assertEqual(meta["file_name"], "bg.jpg")
+        self.assertEqual(body["engine"], "5")  # không gửi engine: mặc định của server (claude), trả bí danh
+
+    async def test_engine_alias_is_forwarded_and_never_reveals_the_vendor(self):
+        response = await self.submit(engine="5", wait_seconds="0")
+        self.assertEqual((response.status_code, response.json()["engine"]), (202, "5"))
+        self.assertEqual(self.queue.enqueued[2]["provider"], "claude")  # bí danh được dịch sang provider thật
+        disabled = await self.submit(engine="1")  # setUp chỉ bật claude
+        self.assertEqual((disabled.status_code, disabled.json()["detail"]),
+                         (422, {"code": "ENGINE_DISABLED", "message": "engine 1: chưa được bật"}))
+        for wrong in ("openai", "claude", "gemini", "2"):  # tên hãng thật cũng không phải bí danh hợp lệ
+            with self.subTest(engine=wrong):
+                unknown = await self.submit(engine=wrong)
+                self.assertEqual((unknown.status_code, unknown.json()["detail"]["code"]), (422, "INVALID_REQUEST"))
+        for response in (disabled, unknown):
+            self.assertNotRegex(response.text.lower(), "gemini|claude|anthropic|provider")
 
     async def test_returns_202_when_not_done_and_job_can_be_polled(self):
         response = await self.submit(wait_seconds="0")
@@ -133,6 +148,8 @@ class PartnerApiTests(unittest.IsolatedAsyncioTestCase):
         spec = (await self.client.get("/partner/openapi.json")).json()
         self.assertEqual(set(spec["paths"]), {"/v1/estimates", "/v1/estimates/{job_id}"})
         self.assertIn("X-API-Key", str(spec["components"]["securitySchemes"]))
+        public_text = (await self.client.get("/partner/openapi.json")).text.lower()
+        self.assertNotRegex(public_text, "gemini|claude|anthropic|provider|engine")  # Swagger công khai không lộ hãng AI
         self.assertEqual((await self.client.get("/partner/docs")).status_code, 200)
 
 

@@ -1,7 +1,7 @@
 """Cache hai tầng cho kết quả LLM: Redis (nhanh) rồi MongoDB (bền vững).
 
 Fail-open: tầng nào lỗi thì cảnh báo một lần, tắt tầng đó trong phần còn lại của tiến trình
-và coi như cache miss; pipeline vẫn gọi Gemini bình thường.
+và coi như cache miss; pipeline vẫn gọi LLM bình thường.
 """
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ import os
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Callable
+from typing import Callable
 
 REDIS_PREFIX = "vre:llm:"
 DEFAULT_TTL_DAYS = 30.0
@@ -54,15 +54,11 @@ class TwoTierCache:
 
     # ---- tầng ----
     def _disable(self, tier: str, exc: Exception) -> None:
-        self._warn(f"{tier} lỗi ({type(exc).__name__}); bỏ qua tầng này và gọi Gemini bình thường.")
+        self._warn(f"{tier} lỗi ({type(exc).__name__}); bỏ qua tầng này và gọi LLM bình thường.")
         if tier == "Redis":
             self._redis = None
         else:
             self._collection = None
-
-    @property
-    def tiers(self) -> list[str]:
-        return [name for name, tier in (("redis", self._redis), ("mongo", self._collection)) if tier is not None]
 
     # ---- API ----
     def get(self, key: str) -> dict | None:
@@ -173,6 +169,6 @@ class TwoTierCache:
                     mongo_client.close()
                     mongo_client = None
         if redis_client is None and collection is None:
-            warn("không có tầng cache nào hoạt động; mọi lời gọi sẽ đi thẳng tới Gemini.")
+            warn("không có tầng cache nào hoạt động; mọi lời gọi sẽ đi thẳng tới LLM.")
         return cls(redis_client, collection, ttl_seconds=ttl_days * 86400, warn=warn, client=mongo_client)
 

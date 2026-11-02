@@ -2,26 +2,20 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
-from types import SimpleNamespace
-from unittest.mock import Mock, patch
-
 from openpyxl import Workbook
 
+from claude_fake import MODEL, FakeClaude, message
 from cost import cost_from_response
+from gemini_fake import MODEL as GEMINI_MODEL, response
+from llm import LlmClients
 from ocr import RepairEstimate, RepairEstimateItem
 from ocr.schema import Document
 from repair_estimate_pipeline import new_run_dir, run_repair_estimate_pipeline
 
-MODEL = "gemini-3.8-flash"
-OCR_USAGE = {"total_input_tokens": 1800, "total_cached_tokens": 0,
-             "total_output_tokens": 4000, "total_thought_tokens": 2500}
-MAP_USAGE = {"total_input_tokens": 30000, "total_cached_tokens": 0,
-             "total_output_tokens": 20, "total_thought_tokens": 300}
-
-
-def response(payload, usage):
-    return SimpleNamespace(text=json.dumps(payload, ensure_ascii=False), candidates=[SimpleNamespace(finish_reason="STOP")], status="completed", output_text=json.dumps(payload, ensure_ascii=False),
-                           model_dump=lambda **kwargs: {"status": "completed", "model": MODEL, "usage": usage})
+OCR_USAGE = {"input_tokens": 1800, "output_tokens": 6500}
+# Lần mapping đầu ghi codebook vào prompt cache 1 giờ.
+MAP_USAGE = {"input_tokens": 400, "cache_creation_input_tokens": 29600, "cache_read_input_tokens": 0,
+             "cache_creation": {"ephemeral_1h_input_tokens": 29600}, "output_tokens": 320}
 
 
 def repair_estimate(*items):
@@ -54,36 +48,34 @@ class PipelineRunTests(unittest.TestCase):
         self.source = self.root / "bao_gia.md"
         self.source.write_text("Báo giá")
         self.estimate = repair_estimate(("Sơn cản", "paint"), ("Nẹp cản trước", "material"), ("Không có", "labor"))
-        self.client = Mock()
-        self.context_env = patch.dict("os.environ", {"MAPPING_CONTEXT_CACHE_ENABLED": "false"})
-        self.context_env.start()
-        self.addCleanup(self.context_env.stop)
+        self.client = FakeClaude()
 
     def run_vre_pipeline(self, **kwargs):
         return run_repair_estimate_pipeline(
-            self.source, model=MODEL, client=self.client, output_dir=self.root / "out",
+            self.source, model=MODEL, llm=LlmClients(clients={"claude": self.client}), output_dir=self.root / "out",
             codebook_dir=self.root, verbose=False, **kwargs,
         )
 
     def test_full_run_logs_results_and_costs_per_step(self):
-        self.client.interactions.create.return_value = response(self.estimate.model_dump(mode="json"), OCR_USAGE)
-        self.client.models.generate_content.side_effect = [
-            response({"selections": [{"index": 0, "name": "Cản", "item_type": "part"}, {"index": 1, "name": "Cản trước", "item_type": "part"}, {"index": 2, "name": None, "item_type": None}]}, MAP_USAGE),            # 1 request service: Không có
+        self.client.replies["ocr"] = message(self.estimate.model_dump(mode="json"), usage=OCR_USAGE)
+        self.client.replies["mapping"] = [
+            message({"selections": [{"index": 0, "name": "Cản", "item_type": "part"}, {"index": 1, "name": "Cản trước", "item_type": "part"}, {"index": 2, "name": None, "item_type": None}]}, usage=MAP_USAGE),
         ]
         summary = self.run_vre_pipeline()
-        sent = json.loads(self.client.models.generate_content.call_args.kwargs["contents"])
-        self.assertEqual([i["category"] for i in sent["items"]], ["paint", "material", "labor"])
-        self.assertTrue(all(set(n) == {"name", "item_type"} for n in sent["names"]))
-        self.assertEqual(self.client.interactions.create.call_count + self.client.models.generate_content.call_count, 2)  # OCR + one mapping
+        self.assertEqual([i["category"] for i in self.client.sent_items()], ["paint", "material", "labor"])
+        self.assertTrue(all(set(n) == {"name", "item_type"} for n in self.client.sent_names()))
+        self.assertEqual(self.client.call_count(), 2)  # OCR + one mapping
         run_dir = Path(summary["run_dir"])
         self.assertEqual(summary["input_sha256"], __import__("hashlib").sha256(self.source.read_bytes()).hexdigest())
         self.assertEqual(summary["status"], "success")
         self.assertEqual(summary["steps"]["ocr"]["items"], 3)
-        self.assertEqual(summary["steps"]["mapping"]["methods"], {"gemini": 2, "unmatched": 1})
-        self.assertEqual(summary["steps"]["mapping"]["gemini_calls"], 1)
+        self.assertEqual(summary["steps"]["mapping"]["methods"], {"claude": 2, "unmatched": 1})
+        self.assertEqual(summary["steps"]["mapping"]["llm_calls"], 1)
         self.assertEqual([i["codes"] for i in summary["items"]], [["S1"], ["P1", "P2"], []])
         ocr_cost = cost_from_response({"model": MODEL, "usage": OCR_USAGE}, MODEL)["total_usd"]
-        map_cost = 1 * cost_from_response({"model": MODEL, "usage": MAP_USAGE}, MODEL)["total_usd"]
+        map_cost = cost_from_response({"model": MODEL, "usage": MAP_USAGE}, MODEL)["total_usd"]
+        self.assertAlmostEqual(ocr_cost, (1800 * 4 + 6500 * 20) / 1e6)
+        self.assertAlmostEqual(map_cost, (400 * 4 + 29600 * 8 + 320 * 20) / 1e6)  # ghi cache 1h = 2x input
         self.assertAlmostEqual(summary["steps"]["ocr"]["cost"]["total_usd"], ocr_cost)
         self.assertAlmostEqual(summary["steps"]["mapping"]["cost"]["total_usd"], map_cost)
         total = summary["total"]["cost"]
@@ -92,20 +84,22 @@ class PipelineRunTests(unittest.TestCase):
         for name in ["summary.json", "report.txt", "mapping.json", "mapping.calls.json", "ocr/result.json"]:
             self.assertTrue((run_dir / name).is_file(), name)
         self.assertEqual(json.loads((run_dir / "summary.json").read_text())["status"], "success")
-        self.assertIn("TỔNG", (run_dir / "report.txt").read_text())
+        report = (run_dir / "report.txt").read_text()
+        self.assertIn("TỔNG", report)
+        self.assertIn("cache đọc 0 · ghi 29,600", report)
         calls = json.loads((run_dir / "mapping.calls.json").read_text())
         self.assertTrue(all(call["cost"]["total_usd"] is not None for call in calls))
 
-    def test_exact_only_makes_single_gemini_call(self):
-        self.client.interactions.create.return_value = response(self.estimate.model_dump(mode="json"), OCR_USAGE)
+    def test_exact_only_makes_single_claude_call(self):
+        self.client.replies["ocr"] = message(self.estimate.model_dump(mode="json"), usage=OCR_USAGE)
         summary = self.run_vre_pipeline(exact_only=True)
-        self.assertEqual(self.client.interactions.create.call_count, 1)
+        self.assertEqual(self.client.call_count(), 1)
         self.assertEqual(summary["steps"]["mapping"]["methods"], {"unmatched": 3})
         self.assertEqual(summary["steps"]["mapping"]["cost"]["calls"], 0)
         self.assertEqual(summary["total"]["cost"]["calls"], 1)
 
     def test_ocr_failure_still_writes_summary_with_cost(self):
-        self.client.interactions.create.return_value = response({"invalid": True}, OCR_USAGE)
+        self.client.replies["ocr"] = message({"invalid": True}, usage=OCR_USAGE)
         with self.assertRaises(ValueError):
             self.run_vre_pipeline()
         summary = json.loads(next((self.root / "out").rglob("summary.json")).read_text())
@@ -116,11 +110,39 @@ class PipelineRunTests(unittest.TestCase):
         self.assertIn("ValidationError", summary["error"])
 
     def test_failure_summary_lands_in_caller_chosen_run_dir(self):
-        self.client.interactions.create.return_value = response({"invalid": True}, OCR_USAGE)
+        self.client.replies["ocr"] = message({"invalid": True}, usage=OCR_USAGE)
         run_dir = new_run_dir(self.root / "out")
         with self.assertRaises(ValueError):
             self.run_vre_pipeline(run_dir=run_dir)
         self.assertEqual(json.loads((run_dir / "summary.json").read_text())["status"], "failed")
+
+    def test_ocr_and_mapping_can_use_different_providers(self):
+        """OCR bằng Gemini, mapping bằng Claude: mỗi bước gọi đúng client của provider mình."""
+        from unittest.mock import Mock
+        gemini = Mock()
+        gemini.interactions.create.return_value = response(self.estimate.model_dump(mode="json"))
+        self.client.replies["mapping"] = message({"selections": [
+            {"index": 0, "name": "Cản", "item_type": "part"}, {"index": 1, "name": None, "item_type": None},
+            {"index": 2, "name": None, "item_type": None}]}, usage=MAP_USAGE)
+        summary = run_repair_estimate_pipeline(
+            self.source, model=GEMINI_MODEL, mapping_model=MODEL,
+            llm=LlmClients(clients={"claude": self.client, "gemini": gemini}),
+            output_dir=self.root / "out", codebook_dir=self.root, verbose=False)
+        self.assertEqual(gemini.interactions.create.call_count, 1)
+        gemini.models.generate_content.assert_not_called()
+        self.assertEqual((len(self.client.calls["ocr"]), len(self.client.calls["mapping"])), (0, 1))
+        self.assertEqual(summary["models"], {"ocr": GEMINI_MODEL, "mapping": MODEL})
+        self.assertEqual(summary["steps"]["mapping"]["methods"], {"claude": 1, "unmatched": 2})
+        report = (Path(summary["run_dir"]) / "report.txt").read_text()
+        self.assertIn("→ Cản", report)
+
+    def test_missing_api_key_of_needed_provider_is_reported(self):
+        llm = LlmClients(env={"ANTHROPIC_API_KEY": "k"})
+        llm.require(MODEL)
+        with self.assertRaisesRegex(RuntimeError, "GEMINI_API_KEY"):
+            llm.require(MODEL, GEMINI_MODEL)
+        with self.assertRaisesRegex(ValueError, "provider"):
+            llm.require("gpt-5")
 
 
 if __name__ == "__main__":

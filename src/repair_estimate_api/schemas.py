@@ -4,7 +4,9 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
+
+from llm import PROVIDER_NAMES, ProviderName
 
 
 ThinkingLevel = Literal["low", "medium", "high"]
@@ -13,6 +15,9 @@ ThinkingLevel = Literal["low", "medium", "high"]
 class JobOptions(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    # None = suy ra từ model đã chọn, không chọn model thì theo LLM_PROVIDER của server.
+    # Model OCR và mapping phải cùng thuộc provider này.
+    provider: ProviderName | None = None
     ocr_model: str | None = None
     mapping_model: str | None = None
     ocr_thinking_level: ThinkingLevel | None = None  # None = auto: theo cấu hình server
@@ -56,12 +61,13 @@ class OcrMetrics(StepMetrics):
 class MappingMetrics(StepMetrics):
     item_count: int
     exact_count: int
-    gemini_count: int
+    # Kết quả job cũ (còn trong Redis) dùng tên gemini_*; đọc được cả hai tên.
+    llm_count: int = Field(validation_alias=AliasChoices("llm_count", "gemini_count"))
     unmatched_count: int
     cache_hits: int
     cache_misses: int
-    gemini_calls: int
-    context_cache: list[dict] = Field(default_factory=list)
+    llm_calls: int = Field(validation_alias=AliasChoices("llm_calls", "gemini_calls"))
+    context_cache: list[dict] = Field(default_factory=list)  # chỉ mapping bằng Gemini
 
 
 class JobMetrics(BaseModel):
@@ -94,7 +100,7 @@ class RunSummary(BaseModel):
     models: dict[str, Any] = Field(default_factory=dict)
     item_count: int | None = None
     exact_count: int | None = None
-    gemini_count: int | None = None
+    llm_count: int | None = None
     unmatched_count: int | None = None
     duration_seconds: float | None = None
     cost_usd: float | None = None
@@ -149,7 +155,7 @@ class ItemMapping(BaseModel):
     @field_validator("method", mode="before")
     @classmethod
     def hide_provider(cls, value: str) -> str:
-        return "ai" if value == "gemini" else value
+        return "ai" if value in PROVIDER_NAMES else value  # không lộ provider (claude/gemini) cho đối tác
 
 
 class EstimateDocument(BaseModel):
@@ -204,6 +210,7 @@ class EstimateResult(BaseModel):
 class Estimate(BaseModel):
     job_id: str = Field(description="Mã job; dùng để hỏi lại trạng thái qua `GET /v1/estimates/{job_id}`.")
     reference_id: str | None = Field(None, description="Mã tham chiếu phía khách gửi lên, trả lại nguyên văn.")
+    engine: str | None = Field(None)  # bí danh provider; cố ý không mô tả và bị lọc khỏi OpenAPI công khai
     status: Literal["queued", "running", "success", "failed"]
     created_at: datetime | None = None
     finished_at: datetime | None = None

@@ -1,4 +1,4 @@
-"""System instruction for Gemini batch fallback in codebook mapping."""
+"""System instruction for LLM batch fallback in codebook mapping (mọi provider)."""
 
 MAPPING_INSTRUCTION = """Đối chiếu các hạng mục vật tư/nhân công/sơn trong `items` với codebook.
 `names` là danh sách chung, mỗi phần tử gồm name và item_type (part hoặc service).

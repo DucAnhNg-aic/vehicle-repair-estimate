@@ -1,25 +1,25 @@
 #!/usr/bin/env bash
-# Chạy toàn bộ OCR → mapping codebook (exact match + Gemini fallback).
+# Chạy toàn bộ OCR → mapping codebook (exact match + LLM fallback; provider Gemini hoặc Claude).
 #
 # Cách dùng (đường dẫn tương đối tính từ thư mục đang gọi lệnh):
 #   ./run_repair_estimate_pipeline.sh 'data/img/bao gia.pdf'
 #   ./run_repair_estimate_pipeline.sh 'data/img/' --timeout 300
 # Folder: chạy tuần tự file được hỗ trợ ngay trong folder, không duyệt folder con.
 # Tiếp tục khi một file lỗi; trả exit code 1 nếu có bất kỳ file nào lỗi.
-#   ./run_repair_estimate_pipeline.sh 'data/img/bao gia.jpg' --model gemini-3.8-flash \
-#       --mapping-model gemini-3.8-flash --timeout 300
+#   ./run_repair_estimate_pipeline.sh 'data/img/bao gia.jpg' --provider claude --timeout 300
 #   ./run_repair_estimate_pipeline.sh 'data/img/bao gia.pdf' --exact-only
 #   ./run_repair_estimate_pipeline.sh --help
 #
 # Các option CLI có thể truyền sau đường dẫn input:
-#   --model MODEL          Model OCR (mặc định lấy GEMINI_MODEL từ env/.env).
-#   --mapping-model MODEL  Model mapping (mặc định dùng model OCR).
-#   --exact-only           Mapping chỉ exact; bước OCR vẫn gọi Gemini.
+#   --provider NAME        gemini | claude cho cả OCR và mapping (mặc định theo --model, rồi LLM_PROVIDER).
+#   --model MODEL          Model OCR gemini-... hoặc claude-... (mặc định <PROVIDER>_OCR_MODEL từ env/.env).
+#   --mapping-model MODEL  Model mapping (mặc định <PROVIDER>_MAPPING_MODEL); model hãng khác = thử trộn provider.
+#   --exact-only           Mapping chỉ exact; bước OCR vẫn gọi LLM.
 #   --save-mongodb         Lưu MongoDB sau OCR và mapping (đọc MONGO_* từ .env).
 #   --no-cache             Bỏ qua cache Redis/MongoDB (REDIS_URL, MONGO_URI trong .env).
 #   --output-dir DIR       Thư mục lưu kết quả từng lần chạy.
 #   --codebook-dir DIR     Chứa service_codebook.xlsx và part_codebook.xlsx.
-#   --env-file FILE        File chứa GEMINI_API_KEY, GEMINI_MODEL.
+#   --env-file FILE        File chứa API key, LLM_PROVIDER và model mặc định từng provider.
 #   --timeout SECONDS      Timeout mỗi HTTP request.
 #
 # Có thể chỉnh các giá trị mặc định bên dưới hoặc override bằng biến môi trường:

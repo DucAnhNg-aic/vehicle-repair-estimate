@@ -39,6 +39,35 @@ class CostTests(unittest.TestCase):
         self.assertTrue(empty["complete"])
         self.assertEqual(empty["total_usd"], 0.0)
 
+    def test_claude_cache_write_read_and_output(self):
+        usage = {"input_tokens": 1000, "cache_creation_input_tokens": 3000, "cache_read_input_tokens": 50000,
+                 "cache_creation": {"ephemeral_5m_input_tokens": 1000, "ephemeral_1h_input_tokens": 2000},
+                 "output_tokens": 2000}
+        cost = cost_from_response({"model": "claude-opus-5-5", "usage": usage}, "unknown-model")
+        # 1000*4 + 1000*5 (ghi 5 phút) + 2000*8 (ghi 1 giờ) + 50000*0.20 (đọc cache) + 2000*20
+        self.assertAlmostEqual(cost["total_usd"], (4000 + 5000 + 16000 + 10000 + 40000) / 1e6)
+        self.assertEqual(cost["tokens"], {"total_input_tokens": 54000, "total_cached_tokens": 50000,
+                                          "total_output_tokens": 2000, "total_thought_tokens": 0,
+                                          "total_cache_write_tokens": 3000})
+        self.assertIn("claude.com", cost["pricing_source"])
+
+    def test_claude_haiku_long_prompt_uses_higher_rates(self):
+        short = estimate_cost("claude-haiku-5-5", {"input_tokens": 100_000, "output_tokens": 1000})
+        self.assertAlmostEqual(short["total_usd"], (100_000 * 0.10 + 1000 * 0.50) / 1e6)
+        # cache đọc cũng tính vào độ dài prompt: vượt 100K thì cả request theo giá cao
+        long = estimate_cost("claude-haiku-5-5", {"input_tokens": 1, "cache_read_input_tokens": 100_000, "output_tokens": 1000})
+        self.assertAlmostEqual(long["total_usd"], (1 * 0.50 + 100_000 * 0.05 + 1000 * 2.50) / 1e6)
+
+    def test_claude_unpriced_and_mixed_summary(self):
+        self.assertIn("bảng giá", estimate_cost("claude-unknown", {"input_tokens": 1, "output_tokens": 1})["reason"])
+        self.assertIn("không hợp lệ", estimate_cost("claude-opus-5-5", {"output_tokens": 1})["reason"])
+        claude = estimate_cost("claude-opus-5-5", {"input_tokens": 10, "cache_creation_input_tokens": 5, "output_tokens": 1})
+        gemini = estimate_cost("gemini-3.8-flash", USAGE, date(2026, 10, 5))
+        total = sum_costs([claude, gemini])
+        self.assertAlmostEqual(total["total_usd"], claude["total_usd"] + gemini["total_usd"])
+        self.assertEqual(total["tokens"]["total_cache_write_tokens"], 5)
+        self.assertEqual(total["tokens"]["total_input_tokens"], 15 + 1000)
+
 
 if __name__ == "__main__":
     unittest.main()

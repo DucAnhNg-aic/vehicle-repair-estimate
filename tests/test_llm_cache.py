@@ -3,25 +3,17 @@ import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from types import SimpleNamespace
-from unittest.mock import Mock, patch
 
 from openpyxl import Workbook
 
+from claude_fake import MODEL, FakeClaude, message
 from llm_cache import TwoTierCache, mapping_context, mapping_key, ocr_key
-from mapping import GeminiMatcher
+from llm import LlmClients
+from llm.claude import Backend as ClaudeBackend
+from mapping import LlmMatcher
 from ocr import RepairEstimate, RepairEstimateItem, extract_repair_estimate
 from ocr.schema import Document
 from repair_estimate_pipeline import run_repair_estimate_pipeline
-
-MODEL = "gemini-3.8-flash"
-USAGE = {"total_input_tokens": 100, "total_cached_tokens": 0, "total_output_tokens": 10, "total_thought_tokens": 5}
-
-
-def response(payload, usage=USAGE):
-    return SimpleNamespace(text=json.dumps(payload, ensure_ascii=False), candidates=[SimpleNamespace(finish_reason="STOP")], status="completed", output_text=json.dumps(payload, ensure_ascii=False),
-                           model_dump=lambda **kwargs: {"status": "completed", "model": MODEL, "usage": usage})
-
 
 def estimate(*items):
     rows = []
@@ -115,7 +107,7 @@ class TwoTierCacheTests(unittest.TestCase):
         cache = self.make(FakeRedis(fail=True), FakeCollection())
         cache.set("k", {"name": "A"})
         self.assertEqual(cache.get("k"), {"name": "A"})
-        self.assertEqual(cache.tiers, ["mongo"])
+        self.assertEqual((cache._redis, cache._collection is not None), (None, True))  # chỉ còn Mongo
         self.assertEqual(len(self.warnings), 1)
         self.assertIn("Redis", self.warnings[0])
 
@@ -123,7 +115,7 @@ class TwoTierCacheTests(unittest.TestCase):
         cache = self.make(FakeRedis(fail=True), FakeCollection(fail=True))
         cache.set("k", {"name": "A"})
         self.assertIsNone(cache.get("k"))
-        self.assertEqual(cache.tiers, [])
+        self.assertEqual((cache._redis, cache._collection), (None, None))
         self.assertEqual(len(self.warnings), 2)
 
     def test_corrupt_redis_value_is_a_miss(self):
@@ -167,32 +159,29 @@ class KeyTests(unittest.TestCase):
             self.assertNotEqual(key, mapping_key(other, fields), change)
 
 
-class GeminiMatcherCacheTests(unittest.TestCase):
-    NAMES = ["Sơn cản", "Cản trước"]
+class MatcherCacheTests(unittest.TestCase):
+    NAMES = {"part": ["Sơn cản", "Cản trước"], "service": []}
 
     def setUp(self):
-        self.client, self.cache = Mock(), MemoryCache()
-        self.context_env = patch.dict("os.environ", {"MAPPING_CONTEXT_CACHE_ENABLED": "false"})
-        self.context_env.start()
-        self.addCleanup(self.context_env.stop)
-        self.matcher = GeminiMatcher(self.client, MODEL, cache=self.cache, context_cache_enabled=False)
+        self.client, self.cache = FakeClaude(), MemoryCache()
+        self.matcher = LlmMatcher(ClaudeBackend(self.client), MODEL, cache=self.cache)
         self.items = estimate(("a", "paint"), ("b", "paint")).items
 
     def reply(self, *names):
-        self.client.models.generate_content.return_value = response(
-            {"selections": [{"index": i, "name": n} for i, n in enumerate(names)]})
+        self.client.replies["mapping"] = message(
+            {"selections": [{"index": i, "name": n, "item_type": n and "part"} for i, n in enumerate(names)]})
 
     def test_invalid_name_becomes_null_and_is_not_cached(self):
         self.reply("Sơn cản", "tự bịa")  # item b: tên ngoài codebook
-        self.assertEqual(self.matcher.select_many(self.items, self.NAMES), ["Sơn cản", None])
+        self.assertEqual(self.matcher.select_many(self.items, self.NAMES), [("part", "Sơn cản"), None])
         self.assertEqual(len(self.cache.data), 1)  # chỉ kết quả hợp lệ được cache
         self.reply("Cản trước")  # lần sau chỉ hỏi lại item b (a đã cache), không dính null cũ
-        self.assertEqual(self.matcher.select_many(self.items, self.NAMES), ["Sơn cản", "Cản trước"])
-        self.assertEqual(self.client.models.generate_content.call_count, 2)
+        self.assertEqual(self.matcher.select_many(self.items, self.NAMES), [("part", "Sơn cản"), ("part", "Cản trước")])
+        self.assertEqual(len(self.client.calls["mapping"]), 2)
 
     def test_work_cache_roundtrip_and_item_type_change(self):
         names = {"part": ["Cánh cửa"], "service": []}
-        self.client.models.generate_content.return_value = response({"selections": [
+        self.client.replies["mapping"] = message({"selections": [
             {"index": 0, "name": "Cánh cửa", "item_type": "part"},
             {"index": 1, "name": None, "item_type": None}]})
         expected = [("part", "Cánh cửa"), None]
@@ -200,19 +189,19 @@ class GeminiMatcherCacheTests(unittest.TestCase):
         # Redis/Mongo JSON serialization turns tuples into lists.
         self.cache.data = json.loads(json.dumps(self.cache.data))
         self.assertEqual(self.matcher.select_many(self.items, names), expected)
-        self.assertEqual(self.client.models.generate_content.call_count, 1)
-        self.client.models.generate_content.return_value = response({"selections": [
+        self.assertEqual(len(self.client.calls["mapping"]), 1)
+        self.client.replies["mapping"] = message({"selections": [
             {"index": 0, "name": "Cánh cửa", "item_type": "service"},
             {"index": 1, "name": None, "item_type": None}]})
         self.assertEqual(self.matcher.select_many(self.items, {"part": [], "service": ["Cánh cửa"]}),
                          [("service", "Cánh cửa"), None])
-        self.assertEqual(self.client.models.generate_content.call_count, 2)
+        self.assertEqual(len(self.client.calls["mapping"]), 2)
 
     def test_second_call_is_served_from_cache_including_null(self):
         self.reply("Sơn cản", None)
-        self.assertEqual(self.matcher.select_many(self.items, self.NAMES), ["Sơn cản", None])
-        self.assertEqual(self.matcher.select_many(self.items, self.NAMES), ["Sơn cản", None])
-        self.assertEqual(self.client.models.generate_content.call_count, 1)
+        self.assertEqual(self.matcher.select_many(self.items, self.NAMES), [("part", "Sơn cản"), None])
+        self.assertEqual(self.matcher.select_many(self.items, self.NAMES), [("part", "Sơn cản"), None])
+        self.assertEqual(len(self.client.calls["mapping"]), 1)
         self.assertEqual((self.matcher.cache_hits, self.matcher.cache_misses), (2, 2))
         self.assertEqual(len(self.matcher.calls), 1)
 
@@ -220,30 +209,30 @@ class GeminiMatcherCacheTests(unittest.TestCase):
         self.reply("Sơn cản")
         self.matcher.select_many(self.items[:1], self.NAMES)
         self.reply("Cản trước")
-        self.assertEqual(self.matcher.select_many(self.items, self.NAMES), ["Sơn cản", "Cản trước"])
-        sent = json.loads(self.client.models.generate_content.call_args.kwargs["contents"])
-        self.assertEqual([i["raw_name"] for i in sent["items"]], ["b"])
-        self.assertEqual(sent["items"][0]["index"], 0)
-        self.assertEqual(set(sent["items"][0]), {
+        self.assertEqual(self.matcher.select_many(self.items, self.NAMES), [("part", "Sơn cản"), ("part", "Cản trước")])
+        sent = self.client.sent_items()
+        self.assertEqual([i["raw_name"] for i in sent], ["b"])
+        self.assertEqual(sent[0]["index"], 0)
+        self.assertEqual(set(sent[0]), {
             "index", "raw_section", "section_type", "raw_name", "operation",
             "vehicle_part", "item_name", "category",
         })
-        self.assertNotIn("source_evidence", sent["items"][0])
+        self.assertNotIn("source_evidence", sent[0])
 
     def test_duplicates_in_one_batch_are_sent_once(self):
         self.reply("Sơn cản")
         twin = self.items[0].model_copy(update={"quantity": 9.0})
-        self.assertEqual(self.matcher.select_many([self.items[0], twin], self.NAMES), ["Sơn cản", "Sơn cản"])
-        sent = json.loads(self.client.models.generate_content.call_args.kwargs["contents"])
-        self.assertEqual(len(sent["items"]), 1)
+        self.assertEqual(self.matcher.select_many([self.items[0], twin], self.NAMES), [("part", "Sơn cản"), ("part", "Sơn cản")])
+        sent = self.client.sent_items()
+        self.assertEqual(len(sent), 1)
 
     def test_cached_name_outside_codebook_is_ignored(self):
         self.reply("Sơn cản")
         self.matcher.select_many(self.items[:1], self.NAMES)
-        self.client.models.generate_content.reset_mock()
+        self.client.calls["mapping"].clear()
         self.reply("Cản trước")  # codebook không còn "Sơn cản"
-        self.assertEqual(self.matcher.select_many(self.items[:1], ["Cản trước"]), ["Cản trước"])
-        self.assertEqual(self.client.models.generate_content.call_count, 1)
+        self.assertEqual(self.matcher.select_many(self.items[:1], {"part": ["Cản trước"], "service": []}), [("part", "Cản trước")])
+        self.assertEqual(len(self.client.calls["mapping"]), 1)
 
     def test_failed_or_invalid_response_is_not_cached(self):
         self.reply("Sơn cản")  # thiếu index 1: cấu trúc sai thì vẫn lỗi và không ghi gì vào cache
@@ -252,11 +241,11 @@ class GeminiMatcherCacheTests(unittest.TestCase):
         self.assertEqual(self.cache.sets, 0)
 
     def test_without_cache_behaviour_is_unchanged(self):
-        matcher = GeminiMatcher(self.client, MODEL, context_cache_enabled=False)
+        matcher = LlmMatcher(ClaudeBackend(self.client), MODEL)
         self.reply("Sơn cản", None)
         matcher.select_many(self.items, self.NAMES)
         matcher.select_many(self.items, self.NAMES)
-        self.assertEqual(self.client.models.generate_content.call_count, 2)
+        self.assertEqual(len(self.client.calls["mapping"]), 2)
 
 
 class OcrCacheTests(unittest.TestCase):
@@ -267,21 +256,18 @@ class OcrCacheTests(unittest.TestCase):
         self.source = self.root / "input.md"
         self.source.write_text("Vehicle Repair Estimate")
         self.estimate = estimate(("Sơn cản", "paint"))
-        self.client, self.cache = Mock(), MemoryCache()
-        self.context_env = patch.dict("os.environ", {"MAPPING_CONTEXT_CACHE_ENABLED": "false"})
-        self.context_env.start()
-        self.addCleanup(self.context_env.stop)
+        self.client, self.cache = FakeClaude(), MemoryCache()
 
     def run_ocr(self, name, **kwargs):
-        return extract_repair_estimate(self.source, model=MODEL, client=self.client, cache=self.cache,
+        return extract_repair_estimate(self.source, model=MODEL, backend=ClaudeBackend(self.client), cache=self.cache,
                                        run_dir=self.root / name, verbose=False, **kwargs)
 
     def test_second_run_hits_cache_and_writes_artifacts(self):
-        self.client.interactions.create.return_value = response(self.estimate.model_dump(mode="json"))
+        self.client.replies["ocr"] = message(self.estimate.model_dump(mode="json"))
         first = self.run_ocr("r1")
         second = self.run_ocr("r2")
         self.assertEqual(first, second)
-        self.assertEqual(self.client.interactions.create.call_count, 1)
+        self.assertEqual(len(self.client.calls["ocr"]), 1)
         metadata = json.loads((self.root / "r2" / "metadata.json").read_text())
         self.assertTrue(metadata["cache_hit"])
         self.assertIsNone(metadata["cost"])
@@ -289,27 +275,27 @@ class OcrCacheTests(unittest.TestCase):
         self.assertEqual((self.root / "r1" / "result.json").read_text(), (self.root / "r2" / "result.json").read_text())
 
     def test_changed_file_or_model_is_a_miss(self):
-        self.client.interactions.create.return_value = response(self.estimate.model_dump(mode="json"))
+        self.client.replies["ocr"] = message(self.estimate.model_dump(mode="json"))
         self.run_ocr("r1")
         self.source.write_text("Nội dung khác")
         self.run_ocr("r2")
-        extract_repair_estimate(self.source, model="other", client=self.client, cache=self.cache,
+        extract_repair_estimate(self.source, model="claude-sonnet-5-5", backend=ClaudeBackend(self.client), cache=self.cache,
                                 run_dir=self.root / "r3", verbose=False)
-        self.assertEqual(self.client.interactions.create.call_count, 3)
+        self.assertEqual(len(self.client.calls["ocr"]), 3)
 
     def test_invalid_response_is_not_cached(self):
-        self.client.interactions.create.return_value = response({"invalid": True})
+        self.client.replies["ocr"] = message({"invalid": True})
         with self.assertRaises(ValueError):
             self.run_ocr("r1")
         self.assertEqual(self.cache.sets, 0)
 
-    def test_corrupt_cache_entry_falls_back_to_gemini(self):
-        self.client.interactions.create.return_value = response(self.estimate.model_dump(mode="json"))
+    def test_corrupt_cache_entry_falls_back_to_claude(self):
+        self.client.replies["ocr"] = message(self.estimate.model_dump(mode="json"))
         self.run_ocr("r1")
         for key in self.cache.data:
             self.cache.data[key] = {"result": {"invalid": True}}
         self.run_ocr("r2")
-        self.assertEqual(self.client.interactions.create.call_count, 2)
+        self.assertEqual(len(self.client.calls["ocr"]), 2)
 
 
 class PipelineCacheTests(unittest.TestCase):
@@ -331,42 +317,39 @@ class PipelineCacheTests(unittest.TestCase):
         self.source = self.root / "bao_gia.md"
         self.source.write_text("Báo giá")
         self.estimate = estimate(("Sơn cản", "paint"), ("Nẹp cản trước", "material"))
-        self.client, self.cache = Mock(), MemoryCache()
-        self.context_env = patch.dict("os.environ", {"MAPPING_CONTEXT_CACHE_ENABLED": "false"})
-        self.context_env.start()
-        self.addCleanup(self.context_env.stop)
+        self.client, self.cache = FakeClaude(), MemoryCache()
 
     def run_vre(self, **kwargs):
         return run_repair_estimate_pipeline(
-            self.source, model=MODEL, client=self.client, output_dir=self.root / "out",
+            self.source, model=MODEL, llm=LlmClients(clients={"claude": self.client}), output_dir=self.root / "out",
             codebook_dir=self.root, verbose=False, **kwargs)
 
-    def test_second_run_makes_no_gemini_calls_and_reports_cache(self):
-        self.client.interactions.create.return_value = response(self.estimate.model_dump(mode="json"))
-        self.client.models.generate_content.side_effect = [
-            response({"selections": [{"index": 0, "name": "Cản", "item_type": "part"}, {"index": 1, "name": "Cản trước", "item_type": "part"}]}),
+    def test_second_run_makes_no_claude_calls_and_reports_cache(self):
+        self.client.replies["ocr"] = message(self.estimate.model_dump(mode="json"))
+        self.client.replies["mapping"] = [
+            message({"selections": [{"index": 0, "name": "Cản", "item_type": "part"}, {"index": 1, "name": "Cản trước", "item_type": "part"}]}),
         ]
         first = self.run_vre(cache=self.cache)
-        self.assertEqual(self.client.interactions.create.call_count + self.client.models.generate_content.call_count, 2)
+        self.assertEqual(len(self.client.calls["ocr"]) + len(self.client.calls["mapping"]), 2)
         self.assertFalse(first["steps"]["ocr"]["cache_hit"])
         second = self.run_vre(cache=self.cache)
-        self.assertEqual(self.client.interactions.create.call_count + self.client.models.generate_content.call_count, 2)  # không gọi thêm
+        self.assertEqual(len(self.client.calls["ocr"]) + len(self.client.calls["mapping"]), 2)  # không gọi thêm
         self.assertTrue(second["steps"]["ocr"]["cache_hit"])
         self.assertEqual(second["steps"]["mapping"]["cache_hits"], 2)
-        self.assertEqual(second["steps"]["mapping"]["gemini_calls"], 0)
+        self.assertEqual(second["steps"]["mapping"]["llm_calls"], 0)
         self.assertEqual(second["total"]["cost"]["calls"], 0)
         self.assertEqual([i["codes"] for i in second["items"]], [i["codes"] for i in first["items"]])
         self.assertIn("cache", (Path(second["run_dir"]) / "report.txt").read_text())
 
-    def test_no_cache_always_calls_gemini(self):
-        self.client.interactions.create.return_value = response(self.estimate.model_dump(mode="json"))
-        self.client.models.generate_content.side_effect = [
-            response({"selections": [{"index": 0, "name": None, "item_type": None}, {"index": 1, "name": None, "item_type": None}]}),
-            response({"selections": [{"index": 0, "name": None, "item_type": None}, {"index": 1, "name": None, "item_type": None}]}),
+    def test_no_cache_always_calls_claude(self):
+        self.client.replies["ocr"] = message(self.estimate.model_dump(mode="json"))
+        self.client.replies["mapping"] = [
+            message({"selections": [{"index": 0, "name": None, "item_type": None}, {"index": 1, "name": None, "item_type": None}]}),
+            message({"selections": [{"index": 0, "name": None, "item_type": None}, {"index": 1, "name": None, "item_type": None}]}),
         ]
         self.run_vre()
         self.run_vre()
-        self.assertEqual(self.client.interactions.create.call_count + self.client.models.generate_content.call_count, 4)
+        self.assertEqual(len(self.client.calls["ocr"]) + len(self.client.calls["mapping"]), 4)
 
 
 if __name__ == "__main__":

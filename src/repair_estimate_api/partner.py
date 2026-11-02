@@ -10,12 +10,14 @@ import secrets
 import time
 from typing import Callable
 
-from fastapi import Depends, FastAPI, File, Form, Request, Response, Security, UploadFile, status
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Response, Security, UploadFile, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.security import APIKeyHeader
 from rq import Queue
 from rq.job import Job
+
+from llm import engine_alias, provider_by_alias
 
 from .config import ApiSettings
 from .jobs import SUPPORTED_SUFFIXES, api_error, enqueue_upload, public_status
@@ -74,6 +76,17 @@ def create_partner_app(settings: ApiSettings, queue_factory: Callable[[], Queue]
         swagger_ui_parameters={"persistAuthorization": True},
     )
 
+    build_openapi = app.openapi
+
+    def public_openapi() -> dict:
+        """Swagger công khai không ghi ``engine`` (bí danh provider, chỉ BE biết); API vẫn nhận và trả field này."""
+        schema = build_openapi()
+        for model in schema["components"]["schemas"].values():  # response Estimate và form của POST /v1/estimates
+            model.get("properties", {}).pop("engine", None)
+        return schema
+
+    app.openapi = public_openapi
+
     @app.exception_handler(RequestValidationError)
     async def validation_error(_: Request, exc: RequestValidationError) -> JSONResponse:
         """Giữ một định dạng lỗi {code, message} cho khách thay vì danh sách lỗi mặc định của FastAPI."""
@@ -100,7 +113,8 @@ def create_partner_app(settings: ApiSettings, queue_factory: Callable[[], Queue]
     def to_estimate(job: Job, request: Request) -> dict:
         state = public_status(job.get_status(refresh=True))
         body = {
-            "job_id": job.id, "reference_id": job.meta.get("reference_id"), "status": state,
+            "job_id": job.id, "reference_id": job.meta.get("reference_id"),
+            "engine": engine_alias(job.meta.get("provider")), "status": state,
             "created_at": job.created_at, "finished_at": job.ended_at,
             "status_url": f"{request.scope.get('root_path', '')}/v1/estimates/{job.id}",
         }
@@ -130,15 +144,28 @@ def create_partner_app(settings: ApiSettings, queue_factory: Callable[[], Queue]
         file: UploadFile = File(description="Ảnh hoặc PDF báo giá sửa chữa."),
         reference_id: str | None = Form(
             None, max_length=100, description="Mã tham chiếu phía khách (mã hồ sơ, claim...); trả lại nguyên văn."),
+        engine: str | None = Form(None),  # chỉ BE biết (README); bị lọc khỏi Swagger ở public_openapi
         wait_seconds: int | None = Form(
             None, ge=0,
             description=f"Số giây server giữ request chờ kết quả, 0–{settings.partner_max_wait_seconds} "
                         f"(mặc định {settings.partner_max_wait_seconds}). Giá trị lớn hơn được hạ về mức tối đa."),
         client: str = Depends(client_name),
     ) -> dict:
+        provider = None
+        if engine is not None:
+            spec = provider_by_alias(engine)
+            if spec is None:
+                raise api_error(status.HTTP_422_UNPROCESSABLE_CONTENT, "INVALID_REQUEST", "engine: giá trị không hợp lệ")
+            provider = spec.name
         queue = queue_factory()
-        job = await enqueue_upload(lambda: queue, settings, file, JobOptions(),
-                                   {"channel": "partner", "client": client, "reference_id": reference_id})
+        try:
+            job = await enqueue_upload(lambda: queue, settings, file, JobOptions(provider=provider),
+                                       {"channel": "partner", "client": client, "reference_id": reference_id})
+        except HTTPException as exc:
+            if exc.detail.get("code") == "PROVIDER_DISABLED":  # lỗi nội bộ có tên hãng: đổi sang bí danh
+                raise api_error(status.HTTP_422_UNPROCESSABLE_CONTENT, "ENGINE_DISABLED",
+                                f"engine {engine}: chưa được bật") from exc
+            raise
         wait = settings.partner_max_wait_seconds if wait_seconds is None else min(
             wait_seconds, settings.partner_max_wait_seconds)
         deadline = time.monotonic() + wait
